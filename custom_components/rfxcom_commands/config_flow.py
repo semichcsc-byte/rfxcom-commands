@@ -20,7 +20,6 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
-    BURST_SETTLE,
     CONF_AREA_ID,
     CONF_BITS,
     CONF_EVENTS,
@@ -31,13 +30,21 @@ from .const import (
     DEFAULT_REPEATS,
     DOMAIN,
     LEARN_TIMEOUT,
+    MAX_PACKETS_PER_CAPTURE,
     MAX_REPEATS,
     MIN_REPEATS,
     POLL_INTERVAL,
     SUBENTRY_TYPE_COMMAND,
 )
 from .gateway import GatewayError, RawListener, async_send, find_entry
-from .rawrf import Command, RawRFError, build_packets, decode, is_last_packet
+from .rawrf import (
+    MAX_PACKETS,
+    Command,
+    RawRFError,
+    build_packets,
+    decode,
+    is_last_packet,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -159,28 +166,44 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         )
 
     async def _capture(self) -> Command:
-        """Listen until one button press decodes cleanly."""
+        """Listen until one button press decodes cleanly.
+
+        Bursts are assembled strictly by packet index. A burst can never hold
+        more than four packets, so anything that does not fit that shape is a
+        lost or interleaved packet and the partial burst is dropped. Raw mode
+        reports every RF transmission in earshot, so this loop has to stay
+        bounded no matter how much traffic arrives.
+        """
         async with RawListener(self.hass) as listener:
             deadline = time.monotonic() + LEARN_TIMEOUT
             burst: list[bytes] = []
+            seen = 0
             last_error: RawRFError | None = None
 
             while time.monotonic() < deadline:
                 packet = await listener.next_packet(timeout=POLL_INTERVAL)
                 if packet is None:
                     continue
-                burst.append(packet)
-                if not is_last_packet(packet):
+
+                seen += 1
+                if seen > MAX_PACKETS_PER_CAPTURE:
+                    raise RawRFError(
+                        "Too much 433 MHz traffic to pick out a single remote. "
+                        "Try again somewhere quieter, or closer to the RFXCOM."
+                    )
+
+                index = packet[2]
+                if index == 0:
+                    burst = [packet]
+                elif burst and index == len(burst) and len(burst) < MAX_PACKETS:
+                    burst.append(packet)
+                else:
+                    # Out of order: another transmission cut across this one.
+                    burst = []
                     continue
 
-                # A held button produces back-to-back bursts; give the next one
-                # a moment to arrive so a short press is not judged too early.
-                extra = await listener.next_packet(timeout=BURST_SETTLE)
-                while extra is not None:
-                    burst.append(extra)
-                    if is_last_packet(extra):
-                        break
-                    extra = await listener.next_packet(timeout=BURST_SETTLE)
+                if not is_last_packet(packet):
+                    continue
 
                 try:
                     return decode(burst)

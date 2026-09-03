@@ -27,6 +27,6 @@ MAX_REPEATS = 10
 LEARN_TIMEOUT = 45
 POLL_INTERVAL = 0.25
 
-# How long to keep collecting after the first burst arrives, so that a held
-# button does not get chopped into a burst too short to validate.
-BURST_SETTLE = 1.0
+# Raw mode reports every RF transmission in earshot, so a noisy band can deliver
+# packets far faster than a remote does. Give up rather than accumulate.
+MAX_PACKETS_PER_CAPTURE = 2000

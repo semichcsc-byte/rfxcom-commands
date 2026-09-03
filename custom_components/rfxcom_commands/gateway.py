@@ -35,6 +35,12 @@ _LOGGER = logging.getLogger(__name__)
 # Long enough for the firmware to apply a mode change and answer with a status.
 MODE_SETTLE = 1.0
 
+# Raw mode reports every RF transmission in earshot. A capture only ever needs
+# the last few packets, so a bounded queue that drops the oldest is both
+# sufficient and the only thing standing between a noisy band and an
+# ever-growing backlog.
+QUEUE_SIZE = 64
+
 
 class GatewayError(Exception):
     """Raised when the RFXtrx cannot be reached or driven."""
@@ -150,7 +156,7 @@ class RawListener:
         self._previous: list[str] | None = None
         self._transport: Any = None
         self._original_parse: Callable[[Any], Any] | None = None
-        self._queue: asyncio.Queue[bytes] = asyncio.Queue()
+        self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=QUEUE_SIZE)
         self._loop = asyncio.get_running_loop()
 
     async def __aenter__(self) -> RawListener:
@@ -196,11 +202,16 @@ class RawListener:
         transport = self._rfx.transport
         original = transport.parse
 
+        def _queue(packet: bytes) -> None:
+            if self._queue.full():
+                self._queue.get_nowait()  # drop the oldest; a capture wants the newest
+            self._queue.put_nowait(packet)
+
         def _parse(data: Any) -> Any:
             try:
                 packet = bytes(data)
                 if len(packet) >= 6 and packet[1] == 0x7F:
-                    self._loop.call_soon_threadsafe(self._queue.put_nowait, packet)
+                    self._loop.call_soon_threadsafe(_queue, packet)
             except Exception:  # noqa: BLE001 - a bad capture must not kill the reader
                 _LOGGER.debug("Ignoring malformed packet", exc_info=True)
             return original(data)
