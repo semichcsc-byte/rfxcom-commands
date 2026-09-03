@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "RFXCOM Commands",
+        "description": "This uses the connection your RFXCOM integration already has, so there is nothing to configure. Press Submit, then add commands from the integration page."
+      }
+    },
+    "abort": {
+      "already_configured": "Already set up. Add commands from the integration page.",
+      "no_gateway": "No RFXCOM integration is set up. Add that first: this integration borrows its connection to the device rather than opening a second one."
+    }
+  },
+  "config_subentries": {
+    "command": {
+      "title": "Command",
+      "initiate_flow": {
+        "user": "Learn a command",
+        "reconfigure": "Edit command"
+      },
+      "entry_type": "Command",
+      "step": {
+        "name": {
+          "title": "Name the command",
+          "description": "Captured: {bits}\n\nTick Test to transmit it and check it does the right thing. Nothing is saved until you leave that box unticked.",
+          "data": {
+            "name": "Name",
+            "area_id": "Area",
+            "repeats": "Repeats",
+            "test": "Test before saving"
+          },
+          "data_description": {
+            "repeats": "How many times each transmission sends the command. Lower it only if you have a reason to; a weak link needs the full 10."
+          }
+        },
+        "reconfigure": {
+          "title": "Edit command",
+          "description": "Renaming or moving the command keeps the same entity, so dashboards and automations carry on working.",
+          "data": {
+            "name": "Name",
+            "area_id": "Area",
+            "repeats": "Repeats",
+            "relearn": "Capture the command again"
+          }
+        },
+        "failed": {
+          "title": "Nothing usable was captured",
+          "description": "{error}\n\nPress Submit to try again."
+        }
+      },
+      "progress": {
+        "learn": "Press and hold the button on your remote for a second or two, within a few metres of the RFXCOM."
+      },
+      "error": {
+        "send_failed": "Could not transmit: {error}"
+      },
+      "abort": {
+        "reconfigure_successful": "Command updated."
+      }
+    }
+  }
+}

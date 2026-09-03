@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "RFXCOM Commands",
+        "description": "Usa a ligação que a tua integração RFXCOM já tem, por isso não há nada a configurar. Carrega em Enviar e depois adiciona comandos na página da integração."
+      }
+    },
+    "abort": {
+      "already_configured": "Já está configurado. Adiciona comandos na página da integração.",
+      "no_gateway": "Não há nenhuma integração RFXCOM configurada. Adiciona-a primeiro: esta integração usa a ligação dela ao dispositivo em vez de abrir uma segunda."
+    }
+  },
+  "config_subentries": {
+    "command": {
+      "title": "Comando",
+      "initiate_flow": {
+        "user": "Aprender um comando",
+        "reconfigure": "Editar comando"
+      },
+      "entry_type": "Comando",
+      "step": {
+        "name": {
+          "title": "Dar nome ao comando",
+          "description": "Capturado: {bits}\n\nMarca Testar para o transmitir e confirmar que faz o que deve. Nada é guardado enquanto essa caixa estiver marcada.",
+          "data": {
+            "name": "Nome",
+            "area_id": "Área",
+            "repeats": "Repetições",
+            "test": "Testar antes de guardar"
+          },
+          "data_description": {
+            "repeats": "Quantas vezes cada transmissão envia o comando. Só baixa isto se tiveres motivo; uma ligação fraca precisa das 10."
+          }
+        },
+        "reconfigure": {
+          "title": "Editar comando",
+          "description": "Mudar o nome ou a área mantém a mesma entidade, por isso dashboards e automações continuam a funcionar.",
+          "data": {
+            "name": "Nome",
+            "area_id": "Área",
+            "repeats": "Repetições",
+            "relearn": "Capturar o comando outra vez"
+          }
+        },
+        "failed": {
+          "title": "Não se captou nada de aproveitável",
+          "description": "{error}\n\nCarrega em Enviar para tentar de novo."
+        }
+      },
+      "progress": {
+        "learn": "Carrega e mantém o botão do comando premido um ou dois segundos, a poucos metros do RFXCOM."
+      },
+      "error": {
+        "send_failed": "Não foi possível transmitir: {error}"
+      },
+      "abort": {
+        "reconfigure_successful": "Comando atualizado."
+      }
+    }
+  }
+}
