@@ -1,4 +1,4 @@
-# RFXCOM Commands
+<img src="logo.png" alt="RFXCOM Commands" width="360">
 
 [![Validate](https://github.com/semichcsc-byte/rfxcom-commands/actions/workflows/validate.yml/badge.svg)](https://github.com/semichcsc-byte/rfxcom-commands/actions/workflows/validate.yml)
 [![HACS custom](https://img.shields.io/badge/HACS-custom-41BDF5.svg)](https://hacs.xyz)
