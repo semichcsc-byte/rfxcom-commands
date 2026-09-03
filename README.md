@@ -77,7 +77,8 @@ Each command you save becomes a button entity, grouped under the gateway.
 
 Raw reporting is only active when every receive protocol is enabled, so
 learning switches them all on, captures, and then puts your previous selection
-back. Your RFXCOM reloads twice in the process, which takes a few seconds.
+back. The change is written straight to the open connection, so your RFXCOM
+keeps running throughout — no reload, no gap in coverage.
 
 Nothing about your normal protocol list changes permanently, and transmitting
 does not depend on it — once a command is learned, its button works with your

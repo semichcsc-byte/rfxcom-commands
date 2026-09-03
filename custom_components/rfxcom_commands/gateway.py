@@ -5,12 +5,17 @@ connection. Transmitting goes through the `rfxtrx.send` action. Receiving is the
 awkward half: `RFXtrxTransport.parse` discards packet type 0x7F because
 pyRFXtrx has no class for it, so the raw pulse data never reaches an event.
 `_receive_packet` calls `self.parse(pkt)`, so an instance attribute shadows the
-class method and lets us see every packet before pyRFXtrx drops it.
+class method and lets us see every packet before pyRFXtrx discards it.
 
 Raw reporting also has to be switched on, and the only switch is the receive
 protocol list. Which protocol bit unlocks it is undocumented and differs between
 firmware versions, so learning enables the lot and puts the previous selection
 back afterwards.
+
+The mode change is written straight to the open connection rather than by
+rewriting the RFXtrx config entry. Reloading the entry would close and reopen
+the serial port twice per capture, and closing it while the reader thread sits
+in a blocking read hangs the reload.
 """
 
 from __future__ import annotations
@@ -23,23 +28,12 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
-from .const import (
-    CONF_PROTOCOLS,
-    RFXTRX_DATA_OBJECT,
-    RFXTRX_DOMAIN,
-    RFXTRX_SERVICE_SEND,
-)
+from .const import RFXTRX_DATA_OBJECT, RFXTRX_DOMAIN, RFXTRX_SERVICE_SEND
 
 _LOGGER = logging.getLogger(__name__)
 
-# Used when pyRFXtrx does not expose its mode table, which has happened across
-# releases. Superset is harmless: unknown names are rejected before we send.
-_FALLBACK_PROTOCOLS = [
-    "ac", "adlightwave", "aeblyss", "arc", "ati", "blindst0", "blindst1234",
-    "byronsx", "fineoffset", "fs20", "hideki", "homeconfort", "homeeasy",
-    "imagintronix", "keeloq", "lacrosse", "lighting4", "meiantech", "mertik",
-    "oregon", "proguard", "rsl", "rubicson", "undecoded", "visonic", "x10",
-]
+# Long enough for the firmware to apply a mode change and answer with a status.
+MODE_SETTLE = 1.0
 
 
 class GatewayError(Exception):
@@ -55,7 +49,7 @@ def find_entry(hass: HomeAssistant) -> ConfigEntry:
     ]
     if not entries:
         raise GatewayError(
-            "The RFXCOM integration is not set up. Add it first: this "
+            "The RFXCOM integration is not set up, or is still starting. This "
             "integration borrows its connection rather than opening a second one."
         )
     return entries[0]
@@ -74,17 +68,61 @@ def _rfx_object(hass: HomeAssistant) -> Any:
 
 def supported_protocols() -> list[str]:
     """Every receive protocol this build of pyRFXtrx knows about."""
-    try:
-        from RFXtrx import lowlevel  # noqa: PLC0415
+    from RFXtrx import lowlevel  # noqa: PLC0415
 
-        modes = getattr(lowlevel, "RECMODES", None)
-        if modes:
-            names = sorted({m for group in modes for m in group if m})
-            if names:
-                return names
-    except Exception:  # noqa: BLE001 - fall back rather than fail learning
-        _LOGGER.debug("Could not read protocol list from pyRFXtrx", exc_info=True)
-    return list(_FALLBACK_PROTOCOLS)
+    names: set[str] = set()
+    for entry in getattr(lowlevel, "RECMODES", None) or []:
+        for name in entry or []:
+            if name:
+                names.add(name)
+    if not names:
+        raise GatewayError("This version of pyRFXtrx exposes no protocol list")
+    return sorted(names)
+
+
+def current_protocols(hass: HomeAssistant) -> list[str]:
+    """What the device is currently decoding.
+
+    Prefers what the connection was told to use, falling back to what the
+    device reported at startup.
+    """
+    rfx = _rfx_object(hass)
+    modes = list(getattr(rfx, "_modes", None) or [])
+    if modes:
+        return modes
+
+    status = getattr(rfx, "_status", None)
+    device = getattr(status, "device", None)
+    return list(getattr(device, "devices", None) or [])
+
+
+def _mode_packet(rfx: Any, protocols: list[str]) -> bytearray:
+    """Build the 'set mode' command for a protocol selection.
+
+    Mirrors `Connect.set_recmodes`, minus its blocking read: the reader thread
+    owns the port and picks up the device's reply on its own.
+    """
+    from RFXtrx import lowlevel  # noqa: PLC0415
+
+    status = getattr(rfx, "_status", None)
+    device = getattr(status, "device", None)
+    if device is None:
+        raise GatewayError(
+            "The RFXCOM has not reported its status yet; try again in a moment"
+        )
+
+    data = bytearray(
+        [0x0D, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00,
+         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+    )
+    data[5] = device.tranceiver_type
+    data[6] = device.output_power
+    for mode in protocols:
+        byteno, bitno = lowlevel.get_recmode_tuple(mode)
+        if byteno is None:
+            continue  # not supported by this receiver; skip rather than fail
+        data[7 + byteno] |= 1 << bitno
+    return data
 
 
 async def async_send(hass: HomeAssistant, events: list[str]) -> None:
@@ -100,16 +138,15 @@ async def async_send(hass: HomeAssistant, events: list[str]) -> None:
 
 
 class RawListener:
-    """Collects raw packets while the receive protocols are opened up.
+    """Collects raw packets while every receive protocol is enabled.
 
-    Use as an async context manager: it enables every protocol, reloads the
-    RFXtrx entry so the new mode takes effect, hooks the transport, and puts
-    everything back on the way out.
+    Use as an async context manager: it opens the protocol list up, hooks the
+    transport, and puts both back on the way out.
     """
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
-        self._entry: ConfigEntry | None = None
+        self._rfx: Any = None
         self._previous: list[str] | None = None
         self._transport: Any = None
         self._original_parse: Callable[[Any], Any] | None = None
@@ -117,34 +154,46 @@ class RawListener:
         self._loop = asyncio.get_running_loop()
 
     async def __aenter__(self) -> RawListener:
-        self._entry = find_entry(self._hass)
-        self._previous = list(self._entry.options.get(CONF_PROTOCOLS) or [])
-        await self._async_set_protocols(supported_protocols())
+        find_entry(self._hass)  # fails with a clear message when not set up
+        self._rfx = _rfx_object(self._hass)
+
+        previous = current_protocols(self._hass)
+        if not previous:
+            raise GatewayError(
+                "Cannot tell which protocols the RFXCOM is decoding, so they "
+                "could not be restored afterwards. Set the protocol list in the "
+                "RFXCOM integration options, then try again."
+            )
+        self._previous = previous
+
         self._install_hook()
+        try:
+            await self._async_set_protocols(supported_protocols())
+        except Exception:
+            self._remove_hook()
+            raise
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
-        self._remove_hook()
-        if self._previous is not None:
-            try:
+        try:
+            if self._previous is not None:
                 await self._async_set_protocols(self._previous)
-            except Exception:  # noqa: BLE001 - never mask the original failure
-                _LOGGER.exception("Could not restore the RFXCOM protocol list")
+        except Exception:  # noqa: BLE001 - never mask the original failure
+            _LOGGER.exception("Could not restore the RFXCOM protocol list")
+        finally:
+            self._remove_hook()
 
     async def _async_set_protocols(self, protocols: list[str]) -> None:
-        """Rewrite the protocol list and wait for the reload to finish."""
-        assert self._entry is not None
-        if list(self._entry.options.get(CONF_PROTOCOLS) or []) == protocols:
-            return
-        self._hass.config_entries.async_update_entry(
-            self._entry, options={**self._entry.options, CONF_PROTOCOLS: protocols}
-        )
-        await self._hass.config_entries.async_reload(self._entry.entry_id)
-        # The reload replaces the connection object, so re-resolve the entry.
-        self._entry = find_entry(self._hass)
+        packet = _mode_packet(self._rfx, protocols)
+        transport = self._rfx.transport
+        try:
+            await self._hass.async_add_executor_job(transport.send, packet)
+        except Exception as err:  # noqa: BLE001 - surfaced to the user
+            raise GatewayError(f"Could not change the RFXCOM mode: {err}") from err
+        await asyncio.sleep(MODE_SETTLE)
 
     def _install_hook(self) -> None:
-        transport = _rfx_object(self._hass).transport
+        transport = self._rfx.transport
         original = transport.parse
 
         def _parse(data: Any) -> Any:

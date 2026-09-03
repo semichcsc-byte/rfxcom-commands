@@ -6,8 +6,6 @@ RFXTRX_DOMAIN = "rfxtrx"
 RFXTRX_DATA_OBJECT = "rfxobject"
 RFXTRX_SERVICE_SEND = "send"
 
-CONF_PROTOCOLS = "protocols"
-
 CONF_AREA_ID = "area_id"
 CONF_EVENTS = "events"
 CONF_BITS = "bits"
