@@ -22,7 +22,7 @@
       "step": {
         "user": {
           "title": "Aprender um comando",
-          "description": "Carrega em Enviar e depois carrega e mantém premido o botão do comando, um ou dois segundos, a poucos metros do RFXCOM.\n\nA escuta começa quando carregas em Enviar e dura 45 segundos."
+          "description": "Carrega em Enviar e depois carrega e mantém premido o botão do comando, um ou dois segundos, a poucos metros do RFXCOM.\n\nA escuta começa quando carregas em Enviar e pára ao fim de 20 segundos, ou assim que fechares esta janela."
         },
         "name": {
           "title": "Dar nome ao comando",

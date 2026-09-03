@@ -22,7 +22,7 @@
       "step": {
         "user": {
           "title": "Learn a command",
-          "description": "Press Submit, then press and hold the button on your remote for a second or two, within a few metres of the RFXCOM.\n\nListening starts when you press Submit and lasts 45 seconds."
+          "description": "Press Submit, then press and hold the button on your remote for a second or two, within a few metres of the RFXCOM.\n\nListening starts when you press Submit and stops after 20 seconds, or as soon as you close this dialog."
         },
         "name": {
           "title": "Name the command",

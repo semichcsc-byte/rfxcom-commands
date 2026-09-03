@@ -24,7 +24,9 @@ MIN_REPEATS = 1
 MAX_REPEATS = 10
 
 # The device stops sending on its own; these bound our waiting, not the device.
-LEARN_TIMEOUT = 45
+# Short, because closing the dialog is the way out and a press that was going to
+# arrive has arrived by now.
+LEARN_TIMEOUT = 20
 POLL_INTERVAL = 0.25
 
 # Raw mode reports every RF transmission in earshot, so a noisy band can deliver

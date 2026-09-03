@@ -183,7 +183,13 @@ class RawListener:
     async def __aexit__(self, *_exc: object) -> None:
         try:
             if self._previous is not None:
-                await self._async_set_protocols(self._previous)
+                # Shielded: when the capture is cancelled the restore still has
+                # to finish, or the RFXCOM is left decoding everything.
+                await asyncio.shield(
+                    self._async_set_protocols(self._previous)
+                )
+        except asyncio.CancelledError:
+            pass  # the shielded restore carries on without us
         except Exception:  # noqa: BLE001 - never mask the original failure
             _LOGGER.exception("Could not restore the RFXCOM protocol list")
         finally:

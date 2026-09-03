@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from typing import Any
@@ -97,6 +98,18 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
     @property
     def _entry(self) -> ConfigEntry:
         return self._get_entry()
+
+    async def async_remove(self) -> None:
+        """Stop listening as soon as the dialog closes.
+
+        Without this the capture would hold the RFXCOM in raw mode until its
+        timeout, long after the user gave up on it.
+        """
+        task, self._task = self._task, None
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     # --- entry points ----------------------------------------------------
 
