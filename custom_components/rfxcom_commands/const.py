@@ -32,3 +32,7 @@ POLL_INTERVAL = 0.25
 # Raw mode reports every RF transmission in earshot, so a noisy band can deliver
 # packets far faster than a remote does. Give up rather than accumulate.
 MAX_PACKETS_PER_CAPTURE = 2000
+
+# Hearing the same command this many times means the button is being held, so
+# there is no point listening for the rest of the window.
+CONFIDENT_REPEATS = 3

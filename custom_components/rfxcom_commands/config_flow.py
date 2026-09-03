@@ -28,6 +28,7 @@ from .const import (
     CONF_RELEARN,
     CONF_REPEATS,
     CONF_TEST,
+    CONFIDENT_REPEATS,
     DEFAULT_REPEATS,
     DOMAIN,
     LEARN_TIMEOUT,
@@ -89,7 +90,8 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
     """Learn one command and turn it into a button."""
 
     def __init__(self) -> None:
-        self._task: asyncio.Task[Command] | None = None
+        self._task: asyncio.Task[list[Command]] | None = None
+        self._candidates: list[Command] = []
         self._command: Command | None = None
         self._error: str | None = None
         self._subentry_id: str | None = None
@@ -163,10 +165,8 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             )
 
         try:
-            self._command = self._task.result()
-        except RawRFError as err:
-            self._error = str(err)
-        except GatewayError as err:
+            self._candidates = self._task.result()
+        except (RawRFError, GatewayError) as err:
             self._error = str(err)
         except Exception as err:  # noqa: BLE001 - surfaced to the user verbatim
             _LOGGER.exception("Learning failed")
@@ -174,12 +174,50 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         finally:
             self._task = None
 
-        return self.async_show_progress_done(
-            next_step_id="failed" if self._error else "name"
+        if self._error or not self._candidates:
+            return self.async_show_progress_done(next_step_id="failed")
+        return self.async_show_progress_done(next_step_id="select")
+
+    async def async_step_select(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Show everything that was captured and let one of them be picked.
+
+        More than one distinct command means either a second remote was in
+        range or the button sends more than one code. Either way the user can
+        see what arrived rather than being told the capture failed.
+        """
+        if len(self._candidates) == 1:
+            self._command = self._candidates[0]
+            return await self.async_step_name()
+
+        if user_input is not None:
+            self._command = self._candidates[int(user_input["captured"])]
+            return await self.async_step_name()
+
+        options = [
+            selector.SelectOptionDict(
+                value=str(index),
+                label=f"{command.bits}  ({command.frames_seen} repeats)",
+            )
+            for index, command in enumerate(self._candidates)
+        ]
+        return self.async_show_form(
+            step_id="select",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("captured", default="0"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=options, mode=selector.SelectSelectorMode.LIST
+                        )
+                    )
+                }
+            ),
+            description_placeholders={"count": str(len(self._candidates))},
         )
 
-    async def _capture(self) -> Command:
-        """Listen until one button press decodes cleanly.
+    async def _capture(self) -> list[Command]:
+        """Collect every distinct command heard, best first.
 
         Bursts are assembled strictly by packet index. A burst can never hold
         more than four packets, so anything that does not fit that shape is a
@@ -191,7 +229,8 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             deadline = time.monotonic() + LEARN_TIMEOUT
             burst: list[bytes] = []
             seen = 0
-            last_error: RawRFError | None = None
+            found: dict[str, Command] = {}
+            repeats: dict[str, int] = {}
 
             while time.monotonic() < deadline:
                 packet = await listener.next_packet(timeout=POLL_INTERVAL)
@@ -200,10 +239,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
 
                 seen += 1
                 if seen > MAX_PACKETS_PER_CAPTURE:
-                    raise RawRFError(
-                        "Too much 433 MHz traffic to pick out a single remote. "
-                        "Try again somewhere quieter, or closer to the RFXCOM."
-                    )
+                    break  # too busy to keep listening; report what we have
 
                 index = packet[2]
                 if index == 0:
@@ -219,16 +255,20 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                     continue
 
                 try:
-                    return decode(burst)
-                except RawRFError as err:
-                    last_error = err
+                    command = decode(burst)
+                except RawRFError:
                     burst = []
+                    continue
+                burst = []
 
-            if last_error is not None:
-                raise last_error
-            raise RawRFError(
-                "Nothing was received. Check that the remote is within a few "
-                "metres of the RFXCOM and that it transmits on the same band."
+                repeats[command.bits] = repeats.get(command.bits, 0) + 1
+                found.setdefault(command.bits, command)
+                if repeats[command.bits] >= CONFIDENT_REPEATS:
+                    break  # heard the same thing enough times to be sure
+
+            # Most-repeated first: a held button beats a passing neighbour.
+            return sorted(
+                found.values(), key=lambda c: repeats[c.bits], reverse=True
             )
 
     async def async_step_failed(
@@ -238,9 +278,17 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             return self.async_show_form(
                 step_id="failed",
                 data_schema=vol.Schema({}),
-                description_placeholders={"error": self._error or ""},
+                description_placeholders={
+                    "error": self._error
+                    or (
+                        "Nothing was received. Check that the remote is within a "
+                        "few metres of the RFXCOM and that it transmits on the "
+                        "same band."
+                    )
+                },
             )
         self._error = None
+        self._candidates = []
         return await self.async_step_learn()
 
     # --- naming and saving ----------------------------------------------

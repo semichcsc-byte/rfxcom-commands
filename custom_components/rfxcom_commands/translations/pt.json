@@ -24,6 +24,13 @@
           "title": "Aprender um comando",
           "description": "Carrega em Enviar e depois carrega e mantém premido o botão do comando, um ou dois segundos, a poucos metros do RFXCOM.\n\nA escuta começa quando carregas em Enviar e pára ao fim de 20 segundos, ou assim que fechares esta janela."
         },
+        "select": {
+          "title": "Escolhe o comando",
+          "description": "Ouviram-se {count} transmissões diferentes. A do teu comando costuma ser a primeira, porque um botão premido repete-se e um vizinho de passagem não.",
+          "data": {
+            "captured": "Capturado"
+          }
+        },
         "name": {
           "title": "Dar nome ao comando",
           "description": "Capturado: {bits}\n\nMarca Testar para o transmitir e confirmar que faz o que deve. Nada é guardado enquanto essa caixa estiver marcada.",
