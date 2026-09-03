@@ -96,6 +96,9 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
+        """Confirm before listening, so the capture window starts when ready."""
+        if user_input is None:
+            return self.async_show_form(step_id="user", data_schema=vol.Schema({}))
         return await self.async_step_learn()
 
     async def async_step_reconfigure(

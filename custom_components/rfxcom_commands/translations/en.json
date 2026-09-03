@@ -20,6 +20,10 @@
       },
       "entry_type": "Command",
       "step": {
+        "user": {
+          "title": "Learn a command",
+          "description": "Press Submit, then press and hold the button on your remote for a second or two, within a few metres of the RFXCOM.\n\nListening starts when you press Submit and lasts 45 seconds."
+        },
         "name": {
           "title": "Name the command",
           "description": "Captured: {bits}\n\nTick Test to transmit it and check it does the right thing. Nothing is saved until you leave that box unticked.",
