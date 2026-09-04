@@ -232,6 +232,38 @@ async def test_repeats_are_baked_into_the_saved_command(
     assert bytes.fromhex(result["data"][CONF_EVENTS][0])[4] == 3
 
 
+async def test_editing_names_the_entity_and_can_fire_it(
+    hass: HomeAssistant, rfxtrx, captures, no_transmit
+) -> None:
+    """Otherwise a command can only be tried out by hunting down its button."""
+    entry = await setup_integration(hass)
+    result = await start_learning(hass, entry)
+    await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"name": "Fan light", CONF_REPEATS: 10, CONF_TEST: False}
+    )
+    await hass.async_block_till_done()
+    subentry_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, "command"),
+        context={"source": "reconfigure", "subentry_id": subentry_id},
+    )
+    assert result["step_id"] == "reconfigure"
+    assert (
+        result["description_placeholders"]["entity_id"]
+        == "button.rfxcom_commands_fan_light"
+    )
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"name": "Fan light", CONF_REPEATS: 4, CONF_TEST: True}
+    )
+    # Back on the form, and the command was transmitted rather than saved.
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    assert len(no_transmit) == 1
+    assert bytes.fromhex(no_transmit[0][0])[4] == 4
+
+
 async def test_closing_the_dialog_stops_the_capture(
     hass: HomeAssistant, rfxtrx, monkeypatch
 ) -> None:

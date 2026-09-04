@@ -141,6 +141,27 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         if user_input is None:
             return self._show_details(step_id="reconfigure")
 
+        if user_input.get(CONF_TEST):
+            try:
+                await async_send(
+                    self.hass,
+                    [
+                        packet.hex()
+                        for packet in build_packets(
+                            list(subentry.data[CONF_PULSES]),
+                            repeats=int(user_input[CONF_REPEATS]),
+                        )
+                    ],
+                )
+            except Exception as err:  # noqa: BLE001 - report and let them retry
+                return self._show_details(
+                    step_id="reconfigure",
+                    user_input=user_input,
+                    errors={"base": "send_failed"},
+                    placeholders={"error": str(err)},
+                )
+            return self._show_details(step_id="reconfigure", user_input=user_input)
+
         if user_input.get(CONF_RELEARN):
             self._defaults |= {
                 "name": user_input["name"],
@@ -354,10 +375,9 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                 CONF_REPEATS, default=current.get(CONF_REPEATS, DEFAULT_REPEATS)
             ): REPEATS,
         }
+        fields[vol.Optional(CONF_TEST, default=False)] = bool
         if step_id == "reconfigure":
             fields[vol.Optional(CONF_RELEARN, default=False)] = bool
-        else:
-            fields[vol.Optional(CONF_TEST, default=False)] = bool
 
         described = {
             "bits": self._command.bits if self._command else "",

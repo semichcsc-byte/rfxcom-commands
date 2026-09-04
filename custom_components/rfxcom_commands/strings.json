@@ -51,7 +51,11 @@
             "name": "Name",
             "area_id": "Area",
             "repeats": "Repeats",
+            "test": "Send it now",
             "relearn": "Capture the command again"
+          },
+          "data_description": {
+            "test": "Transmits the command straight away so you can check it still works. Nothing is saved while this is ticked."
           }
         },
         "failed": {

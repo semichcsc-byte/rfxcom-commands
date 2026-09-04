@@ -51,7 +51,11 @@
             "name": "Nome",
             "area_id": "Área",
             "repeats": "Repetições",
+            "test": "Enviar agora",
             "relearn": "Capturar o comando outra vez"
+          },
+          "data_description": {
+            "test": "Transmite o comando já a seguir, para confirmares que continua a funcionar. Nada é guardado enquanto esta caixa estiver marcada."
           }
         },
         "failed": {
