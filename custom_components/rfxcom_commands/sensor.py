@@ -12,6 +12,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import RFXCOMConfigEntry
 from .const import DOMAIN
+from .gateway import receiver_band, receiver_firmware
 from .scanner import Scanner
 
 
@@ -27,6 +28,7 @@ async def async_setup_entry(
             LastRepeatsSensor(entry),
             LastJitterSensor(entry),
             LastEncodingSensor(entry),
+            ReceiverBandSensor(entry),
         ]
     )
 
@@ -133,3 +135,26 @@ class LastEncodingSensor(ScannerSensor):
     def native_value(self) -> str | None:
         last = self._scanner.last
         return last["encoding"] if last else None
+
+
+class ReceiverBandSensor(ScannerSensor):
+    """The band the RFXtrx listens on.
+
+    Deliberately not called the signal's frequency: the receiver is fixed-tuned
+    and raw packets carry no frequency or signal strength, so what a remote
+    actually transmits on cannot be measured here. It is worth showing anyway,
+    because a remote a little off this band is the usual reason a command is
+    heard but not obeyed.
+    """
+
+    _attr_name = "Receiver band"
+    _attr_icon = "mdi:antenna"
+    _key = "receiver-band"
+
+    @property
+    def native_value(self) -> str | None:
+        return receiver_band(self.hass)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"firmware_version": receiver_firmware(self.hass)}

@@ -85,6 +85,7 @@ def _prune_stale_entities(hass: HomeAssistant, entry: RFXCOMConfigEntry) -> None
             "last-repeats",
             "last-jitter",
             "last-encoding",
+            "receiver-band",
         )
     }
     registry = er.async_get(hass)

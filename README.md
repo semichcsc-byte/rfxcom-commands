@@ -129,6 +129,14 @@ by the RFXCOM or not. Press buttons on your remote and read them off.
 | **Last code repeats** | how many times the remote sent it, which is how it will be replayed |
 | **Last code jitter** | how far the pulses sat from their ideal lengths; a few percent is clean, a large figure is a receiver straining on a distant or off-frequency remote |
 | **Last code encoding** | `pwm`, `ppm`, `manchester` or `unknown`. Only `pwm` is decoded, so anything else means the bits are a misreading — the pulses still replay correctly |
+| **Receiver band** | the band your RFXtrx is tuned to |
+
+**Receiver band** is the receiver's own fixed frequency, not a measurement of
+anything received. It cannot be one: the RFXtrx has no tuner readout, and raw
+packets carry pulse timings and nothing else — no frequency, no signal
+strength. What a remote actually transmits on cannot be known from here. It is
+worth showing anyway, because a remote sitting a little off this band is the
+usual reason a command is heard perfectly but not obeyed.
 
 **Last code**'s attributes carry the reference detail: `inverted` (the same
 pulses at the opposite polarity, for matching against protocol tables),
@@ -137,9 +145,6 @@ and the whole press occupy the air), `address` (what every code heard has in
 common — each entry in `recent` carries the `button` part that differs),
 `recent` itself, and `bursts_dropped`, which is how you tell a quiet band from
 a crowded one.
-
-What is not there: signal strength. The RFXtrx reports RSSI on decoded packets
-but not on raw ones, so there is no honest number to show.
 
 Put it on a dashboard, or use `rfxcom_commands_raw` as an automation trigger:
 one is fired per command as it is decoded.

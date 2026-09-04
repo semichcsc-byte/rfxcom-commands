@@ -104,6 +104,30 @@ def current_protocols(hass: HomeAssistant) -> list[str]:
     return list(getattr(device, "devices", None) or [])
 
 
+def receiver_band(hass: HomeAssistant) -> str | None:
+    """The band the RFXtrx is tuned to, as its firmware reports it.
+
+    This is the receiver's own fixed frequency, not a measurement of anything
+    received: raw packets carry pulse timings and nothing else, so the
+    frequency a remote actually transmits on cannot be known from here.
+    """
+    try:
+        rfx = _rfx_object(hass)
+    except GatewayError:
+        return None
+    device = getattr(getattr(rfx, "_status", None), "device", None)
+    return getattr(device, "type_string", None)
+
+
+def receiver_firmware(hass: HomeAssistant) -> int | None:
+    try:
+        rfx = _rfx_object(hass)
+    except GatewayError:
+        return None
+    device = getattr(getattr(rfx, "_status", None), "device", None)
+    return getattr(device, "firmware_version", None)
+
+
 def _mode_packet(rfx: Any, protocols: list[str]) -> bytearray:
     """Build the 'set mode' command for a protocol selection.
 
