@@ -75,9 +75,14 @@ async def test_the_scanner_publishes_codes_as_they_arrive(
     # One code on its own has nothing to be compared against.
     assert state.attributes["address"] == ""
 
-    # The repeat count is the whole point of it, so it gets its own sensor
-    # rather than hiding in the attributes.
+    # The repeat count and the readable form are the whole point of it, so
+    # they get their own sensors rather than hiding in the attributes.
     assert hass.states.get(LAST_REPEATS).state == "4"
+    assert hass.states.get("sensor.rfxcom_commands_last_code_hex").state == (
+        "0x012D916A"
+    )
+    assert hass.states.get("sensor.rfxcom_commands_last_code_jitter").state == "1.4"
+    assert hass.states.get("sensor.rfxcom_commands_last_code_encoding").state == "pwm"
 
     # The window closed on its own, so the receiver is not left deaf.
     assert hass.states.get(SCANNER).state == "off"

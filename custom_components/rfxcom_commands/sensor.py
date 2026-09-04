@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -19,7 +20,15 @@ async def async_setup_entry(
     entry: RFXCOMConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    async_add_entities([LastCodeSensor(entry), LastRepeatsSensor(entry)])
+    async_add_entities(
+        [
+            LastHexSensor(entry),
+            LastCodeSensor(entry),
+            LastRepeatsSensor(entry),
+            LastJitterSensor(entry),
+            LastEncodingSensor(entry),
+        ]
+    )
 
 
 class ScannerSensor(SensorEntity):
@@ -79,3 +88,48 @@ class LastRepeatsSensor(ScannerSensor):
     def native_value(self) -> int | None:
         last = self._scanner.last
         return last["repeats"] if last else None
+
+
+class LastHexSensor(ScannerSensor):
+    """The code in the form everyone else quotes."""
+
+    _attr_name = "Last code hex"
+    _attr_icon = "mdi:pound"
+    _key = "last-hex"
+
+    @property
+    def native_value(self) -> str | None:
+        last = self._scanner.last
+        return last["hex"] if last else None
+
+
+class LastJitterSensor(ScannerSensor):
+    """How far the pulses sat from their ideal lengths.
+
+    A few percent is a clean read. A large figure is a receiver straining,
+    which is what an off-frequency or distant remote looks like.
+    """
+
+    _attr_name = "Last code jitter"
+    _attr_icon = "mdi:waveform"
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _key = "last-jitter"
+
+    @property
+    def native_value(self) -> float | None:
+        last = self._scanner.last
+        return last["jitter_pct"] if last else None
+
+
+class LastEncodingSensor(ScannerSensor):
+    """Whether the bits mean anything: only mark-length encoding is decoded."""
+
+    _attr_name = "Last code encoding"
+    _attr_icon = "mdi:sine-wave"
+    _key = "last-encoding"
+
+    @property
+    def native_value(self) -> str | None:
+        last = self._scanner.last
+        return last["encoding"] if last else None

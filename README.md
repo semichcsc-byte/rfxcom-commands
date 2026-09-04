@@ -118,26 +118,25 @@ right, because that is the only way back.
 
 ## The scanner
 
-Turn on **Scanner** on the integration's device page and watch **Last code**
-and **Last code repeats**: every command the RFXCOM hears appears there the
-moment it arrives, decodable by the RFXCOM or not. Press buttons on your remote
-and read them off.
+Turn on **Scanner** on the integration's device page and watch the sensors:
+every command the RFXCOM hears appears there the moment it arrives, decodable
+by the RFXCOM or not. Press buttons on your remote and read them off.
 
-The repeat count is worth its own sensor because it is what the command will be
-replayed with. **Last code**'s attributes carry everything else that can be
-read from a pulse train:
-
-| | |
+| Sensor | |
 |---|---|
-| `hex`, `bit_count` | the code in the form everyone else quotes |
-| `inverted` | the same pulses at the opposite polarity, for matching against protocol tables |
-| `encoding` | `pwm`, `ppm`, `manchester` or `unknown` — only `pwm` is decoded, and anything else is flagged rather than passed off as read |
-| `jitter_pct` | how far the pulses sat from their ideal lengths; a few percent is clean, a large figure is a receiver straining |
-| `short_us`, `long_us`, `gap_us` | the symbol timings |
-| `frame_us`, `burst_us` | how long one frame and the whole press occupy the air |
-| `address` | what every code heard has in common, which is the remote's address; each entry in `recent` carries the `button` part that differs |
-| `recent` | the last ten distinct codes, with how many times each was heard and how many repeats it uses |
-| `bursts_dropped` | transmissions cut short by another one, which is how you tell a quiet band from a crowded one |
+| **Last code hex** | the code in the form everyone else quotes |
+| **Last code** | the same thing as bits |
+| **Last code repeats** | how many times the remote sent it, which is how it will be replayed |
+| **Last code jitter** | how far the pulses sat from their ideal lengths; a few percent is clean, a large figure is a receiver straining on a distant or off-frequency remote |
+| **Last code encoding** | `pwm`, `ppm`, `manchester` or `unknown`. Only `pwm` is decoded, so anything else means the bits are a misreading — the pulses still replay correctly |
+
+**Last code**'s attributes carry the reference detail: `inverted` (the same
+pulses at the opposite polarity, for matching against protocol tables),
+`short_us`/`long_us`/`gap_us`, `frame_us` and `burst_us` (how long one frame
+and the whole press occupy the air), `address` (what every code heard has in
+common — each entry in `recent` carries the `button` part that differs),
+`recent` itself, and `bursts_dropped`, which is how you tell a quiet band from
+a crowded one.
 
 What is not there: signal strength. The RFXtrx reports RSSI on decoded packets
 but not on raw ones, so there is no honest number to show.
