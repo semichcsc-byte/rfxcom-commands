@@ -15,7 +15,7 @@ from .gateway import GatewayError, async_send, find_entry
 from .scanner import Scanner
 from .services import async_setup_services, async_unload_services
 
-PLATFORMS = [Platform.BUTTON, Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.BUTTON, Platform.SELECT, Platform.SENSOR, Platform.SWITCH]
 
 type RFXCOMConfigEntry = ConfigEntry[RFXCOMRuntime]
 
@@ -86,6 +86,7 @@ def _prune_stale_entities(hass: HomeAssistant, entry: RFXCOMConfigEntry) -> None
             "last-jitter",
             "last-encoding",
             "receiver-band",
+            "scan-band",
         )
     }
     registry = er.async_get(hass)

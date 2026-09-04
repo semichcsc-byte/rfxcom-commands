@@ -39,6 +39,8 @@ class Scanner:
         self.raw_packets = 0
         self.bursts_dropped = 0
         self.error: str | None = None
+        # None means whatever the device is already on.
+        self.band: int | None = None
 
     @property
     def running(self) -> bool:
@@ -77,7 +79,7 @@ class Scanner:
 
     async def _run(self) -> None:
         try:
-            async with RawListener(self._hass) as listener:
+            async with RawListener(self._hass, band=self.band) as listener:
                 capture = Capture(listener)
                 async for command in capture.commands(MAX_SCAN_SECONDS):
                     self.last = {

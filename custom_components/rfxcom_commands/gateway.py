@@ -104,6 +104,18 @@ def current_protocols(hass: HomeAssistant) -> list[str]:
     return list(getattr(device, "devices", None) or [])
 
 
+def supported_bands() -> dict[str, int]:
+    """The bands this build of pyRFXtrx can name, by their firmware code.
+
+    Which of them a given RFXtrx will actually accept depends on its hardware;
+    the device is the only authority on that and it is not asked in advance.
+    """
+    from RFXtrx import lowlevel  # noqa: PLC0415
+
+    types = getattr(getattr(lowlevel, "Status", None), "TYPES", None) or {}
+    return {name: code for code, name in types.items()}
+
+
 def receiver_band(hass: HomeAssistant) -> str | None:
     """The band the RFXtrx is tuned to, as its firmware reports it.
 
@@ -128,7 +140,9 @@ def receiver_firmware(hass: HomeAssistant) -> int | None:
     return getattr(device, "firmware_version", None)
 
 
-def _mode_packet(rfx: Any, protocols: list[str]) -> bytearray:
+def _mode_packet(
+    rfx: Any, protocols: list[str], band: int | None = None
+) -> bytearray:
     """Build the 'set mode' command for a protocol selection.
 
     Mirrors `Connect.set_recmodes`, minus its blocking read: the reader thread
@@ -147,7 +161,9 @@ def _mode_packet(rfx: Any, protocols: list[str]) -> bytearray:
         [0x0D, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00,
          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     )
-    data[5] = device.tranceiver_type
+    # The device's own type is what puts the band back, because the status is
+    # never re-read: it still holds the band we found it on.
+    data[5] = device.tranceiver_type if band is None else band
     data[6] = device.output_power
     for mode in protocols:
         byteno, bitno = lowlevel.get_recmode_tuple(mode)
@@ -176,8 +192,9 @@ class RawListener:
     transport, and puts both back on the way out.
     """
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, band: int | None = None) -> None:
         self._hass = hass
+        self._band = band
         self._rfx: Any = None
         self._previous: list[str] | None = None
         self._transport: Any = None
@@ -204,7 +221,7 @@ class RawListener:
 
         self._install_hook()
         try:
-            await self._async_set_protocols(supported_protocols())
+            await self._async_set_protocols(supported_protocols(), band=self._band)
         except Exception:
             self._remove_hook()
             raise
@@ -225,11 +242,16 @@ class RawListener:
         finally:
             self._remove_hook()
 
-    async def _async_set_protocols(self, protocols: list[str]) -> None:
-        packet = _mode_packet(self._rfx, protocols)
+    async def _async_set_protocols(
+        self, protocols: list[str], band: int | None = None
+    ) -> None:
+        packet = _mode_packet(self._rfx, protocols, band=band)
         transport = self._rfx.transport
         _LOGGER.debug(
-            "Setting %d receive protocols: %s", len(protocols), packet.hex()
+            "Setting %d receive protocols%s: %s",
+            len(protocols),
+            f" on band {band:#04x}" if band is not None else "",
+            packet.hex(),
         )
         try:
             await self._hass.async_add_executor_job(transport.send, packet)

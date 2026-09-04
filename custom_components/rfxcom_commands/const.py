@@ -38,6 +38,9 @@ MAX_WATCH_SECONDS = 120
 MAX_SCAN_SECONDS = 600
 RECENT_CODES = 10
 
+# The scanner's band choice: leave the device where it already is.
+BAND_AS_FOUND = "As found"
+
 # The firmware caps repeats at 10. Anything lower has been seen to drop
 # commands on remotes whose carrier sits slightly off 433.92 MHz, and a repeat
 # costs only a few milliseconds, so there is no reason to default lower.

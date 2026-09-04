@@ -43,9 +43,11 @@ class FakeListener:
         hass: HomeAssistant,
         packets: list[bytes] | None = None,
         *,
+        band: int | None = None,
         packets_seen: int | None = None,
     ) -> None:
         self._packets = list(packets if packets is not None else CAPTURE)
+        self.band = band
         self.raw_seen = len(self._packets)
         self.packets_seen = (
             self.raw_seen if packets_seen is None else packets_seen

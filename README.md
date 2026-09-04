@@ -138,6 +138,15 @@ strength. What a remote actually transmits on cannot be known from here. It is
 worth showing anyway, because a remote sitting a little off this band is the
 usual reason a command is heard perfectly but not obeyed.
 
+**Scan band** moves the receiver somewhere else for the duration of a scan —
+868 MHz for a weather station, 315 MHz for an American remote — and puts it
+back when the scanner stops. The band belongs to the whole device, so leaving
+it moved would take the core integration's own devices off the air; it is only
+settable while the scanner is stopped, and never left where it was put.
+
+Whether a given RFXtrx accepts a given band depends on its hardware, and the
+device is not asked in advance. If a band does nothing, that is your answer.
+
 **Last code**'s attributes carry the reference detail: `inverted` (the same
 pulses at the opposite polarity, for matching against protocol tables),
 `short_us`/`long_us`/`gap_us`, `frame_us` and `burst_us` (how long one frame

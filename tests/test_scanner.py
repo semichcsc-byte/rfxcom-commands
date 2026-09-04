@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -22,6 +23,7 @@ from custom_components.rfxcom_commands.const import DOMAIN  # noqa: E402
 SCANNER = "switch.rfxcom_commands_scanner"
 LAST_CODE = "sensor.rfxcom_commands_last_code"
 LAST_REPEATS = "sensor.rfxcom_commands_last_code_repeats"
+BAND = "select.rfxcom_commands_scan_band"
 
 
 @pytest.fixture(autouse=True)
@@ -54,7 +56,7 @@ async def test_the_scanner_publishes_codes_as_they_arrive(
     monkeypatch.setattr(
         scanner_module,
         "RawListener",
-        lambda hass: FakeListener(hass, packets=CAPTURE * 2),
+        lambda hass, band=None: FakeListener(hass, packets=CAPTURE * 2, band=band),
     )
     await setup_integration(hass)
 
@@ -93,7 +95,9 @@ async def test_switching_the_scanner_off_stops_it(
 ) -> None:
     monkeypatch.setattr(scanner_module, "MAX_SCAN_SECONDS", 60)
     monkeypatch.setattr(
-        scanner_module, "RawListener", lambda hass: FakeListener(hass, packets=[])
+        scanner_module,
+        "RawListener",
+        lambda hass, band=None: FakeListener(hass, packets=[], band=band),
     )
     entry = await setup_integration(hass)
 
@@ -108,3 +112,43 @@ async def test_switching_the_scanner_off_stops_it(
     )
     assert not entry.runtime_data.scanner.running
     assert hass.states.get(SCANNER).state == "off"
+
+
+async def test_the_band_is_chosen_before_listening(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    """A band is a property of the whole device, so it is only moved while the
+    scanner runs and only settable while it is stopped."""
+    listeners: list[FakeListener] = []
+
+    def _listener(hass: HomeAssistant, band: int | None = None) -> FakeListener:
+        listeners.append(FakeListener(hass, packets=CAPTURE, band=band))
+        return listeners[-1]
+
+    monkeypatch.setattr(scanner_module, "RawListener", _listener)
+    await setup_integration(hass)
+
+    await hass.services.async_call(
+        "select",
+        "select_option",
+        {"entity_id": BAND, "option": "868.00MHz"},
+        blocking=True,
+    )
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": SCANNER}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert listeners[0].band == 0x55
+
+    monkeypatch.setattr(scanner_module, "MAX_SCAN_SECONDS", 60)
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": SCANNER}, blocking=True
+    )
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "select",
+            "select_option",
+            {"entity_id": BAND, "option": "315MHz"},
+            blocking=True,
+        )
