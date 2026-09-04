@@ -116,22 +116,24 @@ drifts out of step — someone used the physical remote, or a transmission was
 lost — press it again. It always transmits, even when the state already looks
 right, because that is the only way back.
 
-## Watch the airwaves
+## The scanner
 
-Press **Configure** on the integration's page. It listens to everything within
-range and shows each command it heard: the bits, how many times it arrived, and
-the pulse timings. Tick **Listen again** to go round once more.
+Turn on **Scanner** on the integration's device page and watch **Last code**:
+every command the RFXCOM hears appears there the moment it arrives, decodable
+by the RFXCOM or not. Press buttons on your remote and read them off.
 
-This is the quickest way to find out whether a remote is being heard at all,
-whether two buttons really send different codes, and whether something else
-nearby is transmitting on top of you.
+The sensor's state is the last code's bits. Its attributes carry that code's
+pulse timings, the last ten distinct codes with how many times each arrived,
+and how many bursts were cut short by another transmission — which is how you
+tell a quiet band from a crowded one.
 
-The same thing is available as the **RFXCOM Commands: watch** action if you
-want the findings as structured data. Either way each command also fires an
-`rfxcom_commands_raw` event as it arrives, so it can be watched live under
-Developer tools → Events, or used as an automation trigger.
+Put it on a dashboard, or use `rfxcom_commands_raw` as an automation trigger:
+one is fired per command as it is decoded.
 
-The RFXCOM decodes nothing else while it listens, so it always stops on its own.
+The RFXCOM decodes nothing else while the scanner is on, so it switches itself
+off after ten minutes. **Configure** on the integration page does the same
+thing for a fixed window and hands back a written summary, and the
+**RFXCOM Commands: watch** action does it as structured data.
 
 ## Repeats
 

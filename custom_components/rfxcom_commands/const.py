@@ -33,6 +33,11 @@ EVENT_RAW_COMMAND = "rfxcom_commands_raw"
 DEFAULT_WATCH_SECONDS = 30
 MAX_WATCH_SECONDS = 120
 
+# The scanner stays on until switched off, but not forever: the RFXCOM decodes
+# nothing else while it runs, so leaving it on by accident is costly.
+MAX_SCAN_SECONDS = 600
+RECENT_CODES = 10
+
 # The firmware caps repeats at 10. Anything lower has been seen to drop
 # commands on remotes whose carrier sits slightly off 433.92 MHz, and a repeat
 # costs only a few milliseconds, so there is no reason to default lower.

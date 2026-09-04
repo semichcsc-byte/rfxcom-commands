@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -28,10 +29,45 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     async_add_entities(
-        RFXCOMCommandSwitch(entry, subentry)
-        for subentry in entry.subentries.values()
-        if subentry.data.get(CONF_KIND) == KIND_SWITCH
+        [
+            ScannerSwitch(entry),
+            *(
+                RFXCOMCommandSwitch(entry, subentry)
+                for subentry in entry.subentries.values()
+                if subentry.data.get(CONF_KIND) == KIND_SWITCH
+            ),
+        ]
     )
+
+
+class ScannerSwitch(SwitchEntity):
+    """Holds the receiver in raw mode so codes can be watched as they arrive."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Scanner"
+    _attr_icon = "mdi:access-point"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, entry: RFXCOMConfigEntry) -> None:
+        self._scanner = entry.runtime_data.scanner
+        self._attr_unique_id = f"{entry.entry_id}-scanner"
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, entry.entry_id)})
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._scanner.async_subscribe(self.async_write_ha_state))
+
+    @property
+    def is_on(self) -> bool:
+        return self._scanner.running
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._scanner.async_start()
+        if self._scanner.error:
+            raise HomeAssistantError(self._scanner.error)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._scanner.async_stop()
 
 
 class RFXCOMCommandSwitch(SwitchEntity, RestoreEntity):

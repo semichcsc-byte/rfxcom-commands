@@ -12,9 +12,10 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import CONF_KIND, DOMAIN, KIND_BUTTON
 from .gateway import GatewayError, async_send, find_entry
+from .scanner import Scanner
 from .services import async_setup_services, async_unload_services
 
-PLATFORMS = [Platform.BUTTON, Platform.SWITCH]
+PLATFORMS = [Platform.BUTTON, Platform.SENSOR, Platform.SWITCH]
 
 type RFXCOMConfigEntry = ConfigEntry[RFXCOMRuntime]
 
@@ -24,6 +25,7 @@ class RFXCOMRuntime:
     """What the platforms need at runtime."""
 
     hass: HomeAssistant
+    scanner: Scanner
 
     async def send(self, events: list[str]) -> None:
         """Transmit a learned command."""
@@ -36,7 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: RFXCOMConfigEntry) -> bo
     except GatewayError as err:
         raise ConfigEntryNotReady(str(err)) from err
 
-    entry.runtime_data = RFXCOMRuntime(hass=hass)
+    entry.runtime_data = RFXCOMRuntime(hass=hass, scanner=Scanner(hass))
 
     # Owned by the config entry rather than by a command, so that adding a
     # command cannot reassign it and orphan the previous command's button.
@@ -73,13 +75,18 @@ def _prune_stale_entities(hass: HomeAssistant, entry: RFXCOMConfigEntry) -> None
         subentry.subentry_id: subentry.data.get(CONF_KIND, KIND_BUTTON)
         for subentry in entry.subentries.values()
     }
+    # The scanner's own entities belong to the integration, not to a command.
+    system = {f"{entry.entry_id}-scanner", f"{entry.entry_id}-last-code"}
     registry = er.async_get(hass)
     for record in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if record.unique_id in system:
+            continue
         if wanted.get(record.unique_id) != record.domain:
             registry.async_remove(record.entity_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: RFXCOMConfigEntry) -> bool:
+    await entry.runtime_data.scanner.async_stop()
     async_unload_services(hass)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
