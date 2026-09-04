@@ -1,4 +1,16 @@
 {
+  "entity": {
+    "sensor": {
+      "rolling_code": {
+        "name": "Rolling code",
+        "state": {
+          "unknown_yet": "Press the button a few more times",
+          "no": "No, a code repeated",
+          "maybe": "Looks like it"
+        }
+      }
+    }
+  },
   "services": {
     "watch": {
       "name": "Watch the airwaves",

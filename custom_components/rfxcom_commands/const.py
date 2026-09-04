@@ -43,6 +43,12 @@ RECENT_CODES = 10
 # perfectly replayable; three starts to mean something.
 ROLLING_CODES_HINT = 3
 
+# Three answers, because with one or two codes heard there is no evidence
+# either way and "no" would be a guess someone might act on.
+ROLLING_UNKNOWN = "unknown_yet"
+ROLLING_NO = "no"
+ROLLING_MAYBE = "maybe"
+
 # The scanner's band choice: leave the device where it already is.
 BAND_AS_FOUND = "As found"
 

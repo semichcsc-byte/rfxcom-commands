@@ -223,11 +223,17 @@ moment. Just try again.
   any one-way remote allows; accept that it and the light can drift apart.
 - **Rolling codes.** Anything that changes its transmission between presses —
   most car remotes, most garage doors, KeeLoq — is replay-proof by design, and
-  no recorder reproduces one. Turn on the scanner and press the same button
-  three times: a fixed code gives one entry heard three times, a rolling code
-  gives three entries heard once each. **Codes heard** flags that pattern, with
-  the caveat that a remote with an alternating bit also sends more than one
-  code and replays perfectly.
+  no recorder reproduces one. Turn on the scanner, press the same button a few
+  times, and read **Rolling code**:
+
+  | | |
+  |---|---|
+  | Press the button a few more times | not enough heard to say either way |
+  | No, a code repeated | a fixed code — safe to learn |
+  | Looks like it | several codes from one address, none repeating |
+
+  The last one is an indication, not a verdict: a remote with an alternating
+  bit also sends more than one code and replays perfectly.
 - **Hear its own transmissions.** Useful to know: pressing a button here will
   not fire an `rfxtrx_event`, so you cannot use that to confirm a send.
 

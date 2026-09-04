@@ -4,14 +4,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import RFXCOMConfigEntry
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    ROLLING_MAYBE,
+    ROLLING_NO,
+    ROLLING_UNKNOWN,
+)
 from .gateway import receiver_band, receiver_firmware
 from .scanner import Scanner
 
@@ -29,6 +38,7 @@ async def async_setup_entry(
             LastJitterSensor(entry),
             LastEncodingSensor(entry),
             DistinctCodesSensor(entry),
+            RollingCodeSensor(entry),
             ReceiverBandSensor(entry),
         ]
     )
@@ -172,6 +182,37 @@ class DistinctCodesSensor(ScannerSensor):
                 "perfectly replayable."
             )
         return attributes
+
+
+class RollingCodeSensor(ScannerSensor):
+    """Whether the remote looks like it uses rolling codes.
+
+    Three answers, not two. With one or two codes heard there is genuinely no
+    evidence either way, and saying "no" then would be a guess dressed as a
+    finding -- someone would learn a garage door on the strength of it.
+    """
+
+    _attr_translation_key = "rolling_code"
+    _attr_icon = "mdi:dice-multiple"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [ROLLING_UNKNOWN, ROLLING_NO, ROLLING_MAYBE]
+    _key = "rolling-code"
+
+    @property
+    def native_value(self) -> str:
+        scanner = self._scanner
+        if scanner.repeating:
+            return ROLLING_NO
+        if scanner.looks_like_rolling:
+            return ROLLING_MAYBE
+        return ROLLING_UNKNOWN
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "codes_heard": len(self._scanner.recent),
+            "address": self._scanner.address,
+        }
 
 
 class ReceiverBandSensor(ScannerSensor):

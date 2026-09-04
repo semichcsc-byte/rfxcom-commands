@@ -25,6 +25,7 @@ LAST_CODE = "sensor.rfxcom_commands_last_code"
 LAST_REPEATS = "sensor.rfxcom_commands_last_code_repeats"
 BAND = "select.rfxcom_commands_scan_band"
 CODES_HEARD = "sensor.rfxcom_commands_codes_heard"
+ROLLING = "sensor.rfxcom_commands_rolling_code"
 
 
 @pytest.fixture(autouse=True)
@@ -198,5 +199,31 @@ async def test_the_band_is_chosen_before_listening(
 async def test_every_scanner_entity_is_created(hass: HomeAssistant, rfxtrx) -> None:
     """A platform that raises takes only its own entity down, silently."""
     await setup_integration(hass)
-    for entity_id in (SCANNER, LAST_CODE, LAST_REPEATS, BAND, CODES_HEARD):
+    for entity_id in (SCANNER, LAST_CODE, LAST_REPEATS, BAND, CODES_HEARD, ROLLING):
         assert hass.states.get(entity_id) is not None, entity_id
+
+
+async def test_rolling_code_holds_off_until_there_is_evidence(
+    hass: HomeAssistant, rfxtrx
+) -> None:
+    """Answering "no" on one press is a guess someone would act on."""
+    entry = await setup_integration(hass)
+    scanner = entry.runtime_data.scanner
+
+    assert hass.states.get(ROLLING).state == "unknown_yet"
+
+    scanner._remember("10101010100001", 4)
+    scanner._notify()
+    await hass.async_block_till_done()
+    assert hass.states.get(ROLLING).state == "unknown_yet"
+
+    for tail in ("1010", "0110"):
+        scanner._remember("1010101010" + tail, 4)
+    scanner._notify()
+    await hass.async_block_till_done()
+    assert hass.states.get(ROLLING).state == "maybe"
+
+    scanner._remember("10101010100001", 4)
+    scanner._notify()
+    await hass.async_block_till_done()
+    assert hass.states.get(ROLLING).state == "no"

@@ -1,4 +1,16 @@
 {
+  "entity": {
+    "sensor": {
+      "rolling_code": {
+        "name": "Código rotativo",
+        "state": {
+          "unknown_yet": "Carrega mais umas vezes no botão",
+          "no": "Não, um código repetiu-se",
+          "maybe": "Parece que sim"
+        }
+      }
+    }
+  },
   "services": {
     "watch": {
       "name": "Ver o que anda no ar",
