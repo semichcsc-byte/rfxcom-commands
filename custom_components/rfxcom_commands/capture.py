@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 from .const import MAX_PACKETS_PER_CAPTURE, MIN_FRAMES, POLL_INTERVAL
 from .gateway import RawListener
@@ -30,9 +30,19 @@ class Capture:
         self._listener = listener
         self.last_decode_error: str | None = None
         self.bursts_dropped = 0
+        self.rejected = 0
 
-    async def commands(self, seconds: float) -> AsyncIterator[Command]:
-        """Yield every command decoded within the window."""
+    async def commands(
+        self,
+        seconds: float,
+        on_reject: Callable[[str], None] | None = None,
+    ) -> AsyncIterator[Command]:
+        """Yield every command decoded within the window.
+
+        `on_reject` hears about the ones that arrived and could not be read,
+        which is the difference between a silent band and a remote this cannot
+        decode -- indistinguishable otherwise.
+        """
         deadline = time.monotonic() + seconds
         burst: list[bytes] = []
         seen = 0
@@ -81,7 +91,10 @@ class Capture:
             except RawRFError as err:
                 _LOGGER.debug("  burst of %d packet(s) rejected: %s", len(burst), err)
                 self.last_decode_error = str(err)
+                self.rejected += 1
                 burst = []
+                if on_reject is not None:
+                    on_reject(str(err))
                 continue
             burst = []
             _LOGGER.debug("  accepted: %s", command.bits)

@@ -38,6 +38,8 @@ class Scanner:
         self.packets = 0
         self.raw_packets = 0
         self.bursts_dropped = 0
+        self.rejected = 0
+        self.last_reject_reason: str | None = None
         self.error: str | None = None
         # None means whatever the device is already on.
         self.band: int | None = None
@@ -81,7 +83,18 @@ class Scanner:
         try:
             async with RawListener(self._hass, band=self.band) as listener:
                 capture = Capture(listener)
-                async for command in capture.commands(MAX_SCAN_SECONDS):
+
+                def _rejected(reason: str) -> None:
+                    self.rejected = capture.rejected
+                    self.last_reject_reason = reason
+                    self.packets = listener.packets_seen
+                    self.raw_packets = listener.raw_seen
+                    self.bursts_dropped = capture.bursts_dropped
+                    self._notify()
+
+                async for command in capture.commands(
+                    MAX_SCAN_SECONDS, on_reject=_rejected
+                ):
                     self.last = {
                         "bits": command.bits,
                         "hex": command.hex,

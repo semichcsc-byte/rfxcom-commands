@@ -39,6 +39,7 @@ async def async_setup_entry(
             LastEncodingSensor(entry),
             DistinctCodesSensor(entry),
             RollingCodeSensor(entry),
+            SignalsHeardSensor(entry),
             ReceiverBandSensor(entry),
         ]
     )
@@ -213,6 +214,40 @@ class RollingCodeSensor(ScannerSensor):
             "codes_heard": len(self._scanner.recent),
             "address": self._scanner.address,
         }
+
+
+class SignalsHeardSensor(ScannerSensor):
+    """Raw transmissions the receiver handed over, decoded or not.
+
+    Without this a remote the decoder cannot read looks exactly like a remote
+    that was never heard, and those need entirely different answers.
+    """
+
+    _attr_name = "Signals heard"
+    _attr_icon = "mdi:access-point-network"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _key = "signals-heard"
+
+    @property
+    def native_value(self) -> int:
+        return self._scanner.raw_packets
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        scanner = self._scanner
+        attributes: dict[str, Any] = {
+            "packets": scanner.packets,
+            "could_not_read": scanner.rejected,
+            "bursts_dropped": scanner.bursts_dropped,
+            "reason": scanner.last_reject_reason,
+        }
+        if scanner.raw_packets and not scanner.recent:
+            attributes["note"] = (
+                "Transmissions arrived but none could be read. The remote is "
+                "in range and on this band; what it sends is not something "
+                "this decoder handles."
+            )
+        return attributes
 
 
 class ReceiverBandSensor(ScannerSensor):

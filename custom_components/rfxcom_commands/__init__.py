@@ -87,6 +87,7 @@ def _prune_stale_entities(hass: HomeAssistant, entry: RFXCOMConfigEntry) -> None
             "last-encoding",
             "codes-heard",
             "rolling-code",
+            "signals-heard",
             "receiver-band",
             "scan-band",
         )

@@ -26,6 +26,7 @@ LAST_REPEATS = "sensor.rfxcom_commands_last_code_repeats"
 BAND = "select.rfxcom_commands_scan_band"
 CODES_HEARD = "sensor.rfxcom_commands_codes_heard"
 ROLLING = "sensor.rfxcom_commands_rolling_code"
+SIGNALS = "sensor.rfxcom_commands_signals_heard"
 
 
 @pytest.fixture(autouse=True)
@@ -199,8 +200,41 @@ async def test_the_band_is_chosen_before_listening(
 async def test_every_scanner_entity_is_created(hass: HomeAssistant, rfxtrx) -> None:
     """A platform that raises takes only its own entity down, silently."""
     await setup_integration(hass)
-    for entity_id in (SCANNER, LAST_CODE, LAST_REPEATS, BAND, CODES_HEARD, ROLLING):
+    for entity_id in (
+        SCANNER, LAST_CODE, LAST_REPEATS, BAND, CODES_HEARD, ROLLING, SIGNALS
+    ):
         assert hass.states.get(entity_id) is not None, entity_id
+
+
+async def test_a_remote_it_cannot_read_is_not_reported_as_silence(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    """Those need entirely different answers, and looked identical before."""
+    # A burst of one frame: real enough to reach the decoder, too short for it.
+    frame = [400, 1200, 400, 1200, 400]
+    train = frame + [8000]
+    payload = bytes([0x7F, 0, 0, 1]) + b"".join(
+        pulse.to_bytes(2, "big") for pulse in train
+    )
+    packets = [bytes([len(payload)]) + payload] * 4
+
+    monkeypatch.setattr(
+        scanner_module,
+        "RawListener",
+        lambda hass, band=None: FakeListener(hass, packets=packets, band=band),
+    )
+    await setup_integration(hass)
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": SCANNER}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    signals = hass.states.get(SIGNALS)
+    assert int(signals.state) == 4
+    assert signals.attributes["could_not_read"] > 0
+    assert signals.attributes["reason"]
+    assert "none could be read" in signals.attributes["note"]
+    assert hass.states.get(CODES_HEARD).state == "0"
 
 
 async def test_rolling_code_holds_off_until_there_is_evidence(
