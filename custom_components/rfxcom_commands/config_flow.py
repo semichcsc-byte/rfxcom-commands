@@ -16,8 +16,10 @@ from homeassistant.config_entries import (
     ConfigSubentryFlow,
     SubentryFlowResult,
 )
+from homeassistant.const import Platform
 from homeassistant.core import callback
-from homeassistant.helpers import selector
+from homeassistant.helpers import entity_registry as er, selector
+from homeassistant.util import slugify
 
 from .const import (
     CONF_AREA_ID,
@@ -357,13 +359,36 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         else:
             fields[vol.Optional(CONF_TEST, default=False)] = bool
 
-        described = {"bits": self._command.bits if self._command else ""}
+        described = {
+            "bits": self._command.bits if self._command else "",
+            "entity_id": self._entity_id_for(current.get("name", "")),
+        }
         described |= placeholders or {}
         return self.async_show_form(
             step_id=step_id,
             data_schema=vol.Schema(fields),
             errors=errors,
             description_placeholders=described,
+        )
+
+    def _entity_id_for(self, name: str) -> str:
+        """The button's entity id, so it is visible before anything is saved.
+
+        A form cannot re-render as the name is typed, so on a new command this
+        is only exact once the name is known -- after ticking Test, or on
+        reconfigure. Until then it shows the shape the id will take.
+        """
+        registry = er.async_get(self.hass)
+        if self._subentry_id is not None:
+            for record in er.async_entries_for_config_entry(
+                registry, self._entry.entry_id
+            ):
+                if record.unique_id == self._subentry_id:
+                    return record.entity_id
+        if not name:
+            return f"{Platform.BUTTON}.{slugify(self._entry.title)}_<name>"
+        return registry.async_generate_entity_id(
+            Platform.BUTTON, f"{self._entry.title} {name}"
         )
 
     def _save(
@@ -391,8 +416,6 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
 
     def _apply_area(self, subentry_id: str, area_id: str | None) -> None:
         """Move the existing button when the area changes on reconfigure."""
-        from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
-
         registry = er.async_get(self.hass)
         for record in er.async_entries_for_config_entry(
             registry, self._entry.entry_id

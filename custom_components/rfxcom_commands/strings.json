@@ -33,7 +33,7 @@
         },
         "name": {
           "title": "Name the command",
-          "description": "Captured: {bits}\n\nTick Test to transmit it and check it does the right thing. Nothing is saved until you leave that box unticked.",
+          "description": "Captured: {bits}\n\nThe button will be created as `{entity_id}`.\n\nTick Test to transmit it and check it does the right thing. Nothing is saved until you leave that box unticked.",
           "data": {
             "name": "Name",
             "area_id": "Area",
@@ -46,7 +46,7 @@
         },
         "reconfigure": {
           "title": "Edit command",
-          "description": "Renaming or moving the command keeps the same entity, so dashboards and automations carry on working.",
+          "description": "This is `{entity_id}`. Renaming or moving the command keeps the same entity, so dashboards and automations carry on working.",
           "data": {
             "name": "Name",
             "area_id": "Area",
