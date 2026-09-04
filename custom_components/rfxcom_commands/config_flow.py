@@ -92,6 +92,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
     def __init__(self) -> None:
         self._task: asyncio.Task[list[Command]] | None = None
         self._candidates: list[Command] = []
+        self._sightings: dict[str, int] = {}
         self._command: Command | None = None
         self._error: str | None = None
         self._subentry_id: str | None = None
@@ -110,7 +111,9 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         task, self._task = self._task, None
         if task is not None and not task.done():
             task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            # Any failure here belongs to a capture the user has walked away
+            # from; re-raising it would only muddy the log.
+            with contextlib.suppress(Exception):
                 await task
 
     # --- entry points ----------------------------------------------------
@@ -198,7 +201,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         options = [
             selector.SelectOptionDict(
                 value=str(index),
-                label=f"{command.bits}  ({command.frames_seen} repeats)",
+                label=f"{command.bits}  (heard {self._sightings.get(command.bits, 1)}x)",
             )
             for index, command in enumerate(self._candidates)
         ]
@@ -266,6 +269,8 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                 if repeats[command.bits] >= CONFIDENT_REPEATS:
                     break  # heard the same thing enough times to be sure
 
+            # Kept so the picker can show how often each one was heard.
+            self._sightings = repeats
             # Most-repeated first: a held button beats a passing neighbour.
             return sorted(
                 found.values(), key=lambda c: repeats[c.bits], reverse=True

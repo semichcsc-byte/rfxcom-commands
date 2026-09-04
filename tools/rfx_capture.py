@@ -39,7 +39,7 @@ sys.path.insert(
     0, str(Path(__file__).resolve().parent.parent / "custom_components" / "rfxcom_commands")
 )
 
-from packets import ha_code, packet_name  # noqa: E402
+from packets import ha_code, packet_name
 from rawrf import (  # noqa: E402
     MAX_PACKETS,
     RawRFError,

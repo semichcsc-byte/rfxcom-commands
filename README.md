@@ -6,6 +6,29 @@
 Learn 433 MHz remotes with an RFXCOM and get a Home Assistant button for each
 one — including remotes the RFXCOM cannot decode.
 
+## Read this before installing
+
+**The learning flow has taken a production Home Assistant down three times, and
+the cause is not yet understood.**
+
+The symptom is that Home Assistant stops responding entirely a short while after
+a capture: the port still accepts TCP connections but nothing is served, while
+the host itself stays healthy and the Supervisor eventually restarts Core. It
+needed a manual reboot each time.
+
+What is known:
+
+- It has happened with this integration installed, and also once with it
+  disabled, so this code is not the only thing involved.
+- It follows enabling every receive protocol on the RFXCOM, which is what
+  unlocks raw mode and what a capture has to do.
+- Memory exhaustion and disk space were both investigated and ruled out.
+
+**Do not install this on a Home Assistant you depend on.** The capture and
+decoding logic in [tools/rfx_capture.py](tools/rfx_capture.py) runs outside Home
+Assistant and carries none of this risk — if you only want to read a remote,
+start there.
+
 ## Why this exists
 
 The RFXCOM integration works from a list of known protocols. Point a remote at
