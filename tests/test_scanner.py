@@ -24,6 +24,7 @@ SCANNER = "switch.rfxcom_commands_scanner"
 LAST_CODE = "sensor.rfxcom_commands_last_code"
 LAST_REPEATS = "sensor.rfxcom_commands_last_code_repeats"
 BAND = "select.rfxcom_commands_scan_band"
+CODES_HEARD = "sensor.rfxcom_commands_codes_heard"
 
 
 @pytest.fixture(autouse=True)
@@ -192,3 +193,10 @@ async def test_the_band_is_chosen_before_listening(
             {"entity_id": BAND, "option": "315MHz"},
             blocking=True,
         )
+
+
+async def test_every_scanner_entity_is_created(hass: HomeAssistant, rfxtrx) -> None:
+    """A platform that raises takes only its own entity down, silently."""
+    await setup_integration(hass)
+    for entity_id in (SCANNER, LAST_CODE, LAST_REPEATS, BAND, CODES_HEARD):
+        assert hass.states.get(entity_id) is not None, entity_id
