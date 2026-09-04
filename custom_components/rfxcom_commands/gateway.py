@@ -160,6 +160,10 @@ class RawListener:
         self._original_parse: Callable[[Any], Any] | None = None
         self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=QUEUE_SIZE)
         self._loop = asyncio.get_running_loop()
+        # Counted so a failed capture can say which of the two things went
+        # wrong: nothing arrived, or the device never went into raw mode.
+        self.packets_seen = 0
+        self.raw_seen = 0
 
     async def __aenter__(self) -> RawListener:
         find_entry(self._hass)  # fails with a clear message when not set up
@@ -200,6 +204,9 @@ class RawListener:
     async def _async_set_protocols(self, protocols: list[str]) -> None:
         packet = _mode_packet(self._rfx, protocols)
         transport = self._rfx.transport
+        _LOGGER.debug(
+            "Setting %d receive protocols: %s", len(protocols), packet.hex()
+        )
         try:
             await self._hass.async_add_executor_job(transport.send, packet)
         except Exception as err:  # noqa: BLE001 - surfaced to the user
@@ -218,7 +225,9 @@ class RawListener:
         def _parse(data: Any) -> Any:
             try:
                 packet = bytes(data)
+                self.packets_seen += 1
                 if len(packet) >= 6 and packet[1] == 0x7F:
+                    self.raw_seen += 1
                     self._loop.call_soon_threadsafe(_queue, packet)
             except Exception:  # noqa: BLE001 - a bad capture must not kill the reader
                 _LOGGER.debug("Ignoring malformed packet", exc_info=True)

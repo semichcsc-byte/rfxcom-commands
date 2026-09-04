@@ -69,6 +69,41 @@ KIND = selector.SelectSelector(
 )
 
 
+def _explain_failure(
+    listener: RawListener, *, found: bool, decode_error: str | None
+) -> str:
+    """Say which of the several ways this can fail actually happened.
+
+    "Nothing was received" was reported even when the receiver was busy, which
+    sent the search off in entirely the wrong direction.
+    """
+    if found:
+        return (
+            "Heard the remote, but only once, so there was nothing to check the "
+            "reading against. A single misread bit produces a command that looks "
+            "right and does nothing. Press the button again, a little closer to "
+            "the RFXCOM."
+        )
+    if listener.packets_seen == 0:
+        return (
+            "Nothing was received at all. Check that the remote is within a few "
+            "metres of the RFXCOM and that it transmits on the same band."
+        )
+    if listener.raw_seen == 0:
+        return (
+            f"The RFXCOM received {listener.packets_seen} transmissions but "
+            "reported none of them as raw pulse data, so it did not switch into "
+            "raw mode. Its firmware may not support raw reporting, or the mode "
+            "change did not take. Try again; if it keeps happening, this is a "
+            "bug worth reporting."
+        )
+    detail = f" The last one failed because: {decode_error}" if decode_error else ""
+    return (
+        f"{listener.raw_seen} raw packets arrived but none of them formed a "
+        f"readable transmission.{detail}"
+    )
+
+
 class RFXCOMCommandsConfigFlow(ConfigFlow, domain=DOMAIN):
     """Set up against the RFXtrx that the core integration already owns."""
 
@@ -268,6 +303,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             seen = 0
             found: dict[str, Command] = {}
             repeats: dict[str, int] = {}
+            last_decode_error: str | None = None
 
             while time.monotonic() < deadline:
                 # Yield unconditionally. Awaiting a queue that already has an
@@ -299,7 +335,8 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
 
                 try:
                     command = decode(burst)
-                except RawRFError:
+                except RawRFError as err:
+                    last_decode_error = str(err)
                     burst = []
                     continue
                 burst = []
@@ -316,12 +353,9 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                 for command in found.values()
                 if repeats[command.bits] >= MIN_SIGHTINGS
             ]
-            if found and not confirmed:
-                self._error = (
-                    "Heard the remote, but only once, so there was nothing to "
-                    "check the reading against. A single misread bit produces a "
-                    "command that looks right and does nothing. Press the "
-                    "button again, a little closer to the RFXCOM."
+            if not confirmed:
+                self._error = _explain_failure(
+                    listener, found=bool(found), decode_error=last_decode_error
                 )
             # Most-repeated first: a held button beats a passing neighbour.
             return sorted(confirmed, key=lambda c: repeats[c.bits], reverse=True)

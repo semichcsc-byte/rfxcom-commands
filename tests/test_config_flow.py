@@ -38,8 +38,18 @@ class FakeListener:
 
     sent: list[list[str]] = []
 
-    def __init__(self, hass: HomeAssistant, packets: list[bytes] | None = None) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        packets: list[bytes] | None = None,
+        *,
+        packets_seen: int | None = None,
+    ) -> None:
         self._packets = list(packets if packets is not None else CAPTURE)
+        self.raw_seen = len(self._packets)
+        self.packets_seen = (
+            self.raw_seen if packets_seen is None else packets_seen
+        )
 
     async def __aenter__(self) -> FakeListener:
         return self
@@ -227,6 +237,25 @@ async def test_listening_stops_as_soon_as_it_is_sure(
     assert result["step_id"] == "name"
     # Two bursts were enough; the rest were never read.
     assert listeners[0]._packets
+
+
+async def test_a_busy_receiver_that_never_went_raw_says_so(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    """Reporting silence while the receiver was busy sends people the wrong way."""
+    monkeypatch.setattr(
+        config_flow,
+        "RawListener",
+        lambda hass: FakeListener(hass, packets=[], packets_seen=7),
+    )
+
+    entry = await setup_integration(hass)
+    result = await start_learning(hass, entry)
+
+    assert result["step_id"] == "failed"
+    error = result["description_placeholders"]["error"]
+    assert "received 7 transmissions" in error
+    assert "did not switch into raw mode" in error
 
 
 async def test_naming_creates_a_button(
