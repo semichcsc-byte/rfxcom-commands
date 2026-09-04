@@ -21,6 +21,7 @@ from custom_components.rfxcom_commands.const import DOMAIN  # noqa: E402
 
 SCANNER = "switch.rfxcom_commands_scanner"
 LAST_CODE = "sensor.rfxcom_commands_last_code"
+LAST_REPEATS = "sensor.rfxcom_commands_last_code_repeats"
 
 
 @pytest.fixture(autouse=True)
@@ -71,6 +72,10 @@ async def test_the_scanner_publishes_codes_as_they_arrive(
         {"bits": EXPECTED_BITS, "heard": 2, "repeats": 4}
     ]
     assert state.attributes["raw_packets"] == 4
+
+    # The repeat count is the whole point of it, so it gets its own sensor
+    # rather than hiding in the attributes.
+    assert hass.states.get(LAST_REPEATS).state == "4"
 
     # The window closed on its own, so the receiver is not left deaf.
     assert hass.states.get(SCANNER).state == "off"

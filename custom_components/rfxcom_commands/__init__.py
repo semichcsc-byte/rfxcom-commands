@@ -76,7 +76,11 @@ def _prune_stale_entities(hass: HomeAssistant, entry: RFXCOMConfigEntry) -> None
         for subentry in entry.subentries.values()
     }
     # The scanner's own entities belong to the integration, not to a command.
-    system = {f"{entry.entry_id}-scanner", f"{entry.entry_id}-last-code"}
+    system = {
+        f"{entry.entry_id}-scanner",
+        f"{entry.entry_id}-last-code",
+        f"{entry.entry_id}-last-repeats",
+    }
     registry = er.async_get(hass)
     for record in er.async_entries_for_config_entry(registry, entry.entry_id):
         if record.unique_id in system:

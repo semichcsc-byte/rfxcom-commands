@@ -118,14 +118,16 @@ right, because that is the only way back.
 
 ## The scanner
 
-Turn on **Scanner** on the integration's device page and watch **Last code**:
-every command the RFXCOM hears appears there the moment it arrives, decodable
-by the RFXCOM or not. Press buttons on your remote and read them off.
+Turn on **Scanner** on the integration's device page and watch **Last code**
+and **Last code repeats**: every command the RFXCOM hears appears there the
+moment it arrives, decodable by the RFXCOM or not. Press buttons on your remote
+and read them off.
 
-The sensor's state is the last code's bits. Its attributes carry that code's
-repeat count and pulse timings, the last ten distinct codes with how many times
-each arrived, and how many bursts were cut short by another transmission —
-which is how you tell a quiet band from a crowded one.
+The repeat count is worth its own sensor because it is what the command will be
+replayed with. **Last code**'s attributes carry the rest: the pulse timings,
+the last ten distinct codes with how many times each arrived, and how many
+bursts were cut short by another transmission — which is how you tell a quiet
+band from a crowded one.
 
 Put it on a dashboard, or use `rfxcom_commands_raw` as an automation trigger:
 one is fired per command as it is decoded.
