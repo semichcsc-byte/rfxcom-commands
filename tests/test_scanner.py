@@ -69,9 +69,11 @@ async def test_the_scanner_publishes_codes_as_they_arrive(
     state = hass.states.get(LAST_CODE)
     assert state.state == EXPECTED_BITS
     assert state.attributes["recent"] == [
-        {"bits": EXPECTED_BITS, "heard": 2, "repeats": 4}
+        {"bits": EXPECTED_BITS, "heard": 2, "repeats": 4, "button": EXPECTED_BITS}
     ]
     assert state.attributes["raw_packets"] == 4
+    # One code on its own has nothing to be compared against.
+    assert state.attributes["address"] == ""
 
     # The repeat count is the whole point of it, so it gets its own sensor
     # rather than hiding in the attributes.

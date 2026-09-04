@@ -68,7 +68,9 @@ async def test_watch_reports_and_announces_what_it_hears(
     await hass.async_block_till_done()
 
     assert [record["bits"] for record in result["heard"]] == [EXPECTED_BITS]
-    assert result["heard"][0]["times"] == 2
+    assert result["heard"][0]["heard"] == 2
+    assert result["heard"][0]["hex"] == "0x012D916A"
+    assert result["heard"][0]["encoding"] == "pwm"
     assert result["raw_packets"] == 4
 
     # Fired as they arrive, so they can be watched live.

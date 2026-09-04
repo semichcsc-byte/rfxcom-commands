@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -33,6 +34,7 @@ class Scanner:
         self._listeners: list[Callable[[], None]] = []
         self.last: dict[str, Any] | None = None
         self.recent: list[dict[str, Any]] = []
+        self.address = ""
         self.packets = 0
         self.raw_packets = 0
         self.bursts_dropped = 0
@@ -80,12 +82,26 @@ class Scanner:
                 async for command in capture.commands(MAX_SCAN_SECONDS):
                     self.last = {
                         "bits": command.bits,
+                        "hex": command.hex,
+                        "bit_count": len(command.bits),
                         "repeats": command.frames_seen,
+                        "encoding": command.encoding,
+                        "jitter_pct": command.jitter_pct,
+                        "inverted": command.inverted,
                         "short_us": command.short,
                         "long_us": command.long,
                         "gap_us": command.gap,
+                        "frame_us": command.frame_us,
+                        "burst_us": command.burst_us,
                         "pulses": len(command.pulses),
                     }
+                    if not command.trustworthy:
+                        self.last["warning"] = (
+                            "These bits are a mark-length reading of something "
+                            f"that looks like {command.encoding}, so they are "
+                            "probably not what the remote means. Replaying the "
+                            "pulses still works."
+                        )
                     self._remember(command.bits, command.frames_seen)
                     self.packets = listener.packets_seen
                     self.raw_packets = listener.raw_seen
@@ -112,6 +128,19 @@ class Scanner:
                 seen["repeats"] = repeats
                 self.recent.remove(seen)
                 self.recent.insert(0, seen)
-                return
-        self.recent.insert(0, {"bits": bits, "heard": 1, "repeats": repeats})
-        del self.recent[RECENT_CODES:]
+                break
+        else:
+            self.recent.insert(0, {"bits": bits, "heard": 1, "repeats": repeats})
+            del self.recent[RECENT_CODES:]
+        self._split_address()
+
+    def _split_address(self) -> None:
+        """Whatever every code heard has in common is the remote's address.
+
+        Two buttons of one remote share it, so the part that differs is the
+        button. With a single code there is nothing to compare and no split.
+        """
+        codes = [seen["bits"] for seen in self.recent]
+        self.address = os.path.commonprefix(codes) if len(codes) > 1 else ""
+        for seen in self.recent:
+            seen["button"] = seen["bits"][len(self.address):]

@@ -70,7 +70,7 @@
         },
         "name": {
           "title": "Dar nome ao comando",
-          "description": "Capturado: {bits}\n\nO teu comando enviou-o {frames} vezes seguidas, todas concordantes, e vai ser reproduzido exatamente esse número de vezes.\n\nA entidade vai ser criada como `{entity_id}`.\n\nMarca Testar para o transmitir e confirmar que faz o que deve. Nada é guardado enquanto essa caixa estiver marcada.",
+          "description": "Capturado `{hex}`\n\n`{bits}`\n\n{quality}. O teu comando enviou-o {frames} vezes seguidas, todas concordantes, e vai ser reproduzido exatamente esse número de vezes.\n\nA entidade vai ser criada como `{entity_id}`.\n\nMarca Testar para o transmitir e confirmar que faz o que deve. Nada é guardado enquanto essa caixa estiver marcada.",
           "data": {
             "name": "Nome",
             "kind": "Entidade",

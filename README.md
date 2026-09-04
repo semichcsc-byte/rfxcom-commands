@@ -124,10 +124,23 @@ moment it arrives, decodable by the RFXCOM or not. Press buttons on your remote
 and read them off.
 
 The repeat count is worth its own sensor because it is what the command will be
-replayed with. **Last code**'s attributes carry the rest: the pulse timings,
-the last ten distinct codes with how many times each arrived, and how many
-bursts were cut short by another transmission — which is how you tell a quiet
-band from a crowded one.
+replayed with. **Last code**'s attributes carry everything else that can be
+read from a pulse train:
+
+| | |
+|---|---|
+| `hex`, `bit_count` | the code in the form everyone else quotes |
+| `inverted` | the same pulses at the opposite polarity, for matching against protocol tables |
+| `encoding` | `pwm`, `ppm`, `manchester` or `unknown` — only `pwm` is decoded, and anything else is flagged rather than passed off as read |
+| `jitter_pct` | how far the pulses sat from their ideal lengths; a few percent is clean, a large figure is a receiver straining |
+| `short_us`, `long_us`, `gap_us` | the symbol timings |
+| `frame_us`, `burst_us` | how long one frame and the whole press occupy the air |
+| `address` | what every code heard has in common, which is the remote's address; each entry in `recent` carries the `button` part that differs |
+| `recent` | the last ten distinct codes, with how many times each was heard and how many repeats it uses |
+| `bursts_dropped` | transmissions cut short by another one, which is how you tell a quiet band from a crowded one |
+
+What is not there: signal strength. The RFXtrx reports RSSI on decoded packets
+but not on raw ones, so there is no honest number to show.
 
 Put it on a dashboard, or use `rfxcom_commands_raw` as an automation trigger:
 one is fired per command as it is decoded.

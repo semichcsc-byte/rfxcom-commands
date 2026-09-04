@@ -70,6 +70,45 @@ class TestDecode(unittest.TestCase):
         with self.assertRaises(RawRFError):
             decode(CAPTURE, min_frames=99)
 
+    def test_reports_the_code_in_the_forms_people_compare(self) -> None:
+        self.assertEqual(self.command.hex, "0x012D916A")
+        self.assertEqual(len(self.command.bits), 30)
+        self.assertEqual(
+            self.command.inverted, "111110110100100110111010010101"
+        )
+
+    def test_recognises_mark_length_encoding(self) -> None:
+        self.assertEqual(self.command.encoding, "pwm")
+        self.assertTrue(self.command.trustworthy)
+
+    def test_measures_how_clean_the_reception_was(self) -> None:
+        # A real capture off a remote a couple of metres away.
+        self.assertLess(self.command.jitter_pct, 5)
+
+    def test_reports_how_long_the_press_occupies_the_air(self) -> None:
+        self.assertEqual(self.command.frame_us, sum(self.command.pulses[:-1]))
+        self.assertEqual(
+            self.command.burst_us,
+            (self.command.frame_us + self.command.gap) * 4,
+        )
+
+    def test_gap_encoding_is_not_passed_off_as_decoded(self) -> None:
+        """A fixed mark with a varying gap is PPM, which this cannot read."""
+        short, long = 400, 1200
+        # Odd length: the last mark's space is the frame separator, as in a
+        # real capture. Every mark the same, the gaps carrying the bits.
+        frame = [short, long, short, short, short, long, short, short, short]
+        train = []
+        for _ in range(3):
+            train += frame + [8000]
+        packets = [
+            _rx_packet(train[i : i + 124], i // 124, i + 124 >= len(train))
+            for i in range(0, len(train), 124)
+        ]
+        command = decode(packets)
+        self.assertEqual(command.encoding, "ppm")
+        self.assertFalse(command.trustworthy)
+
     def test_a_short_frame_cannot_outvote_the_full_one(self) -> None:
         """A lost pulse pair shortens a frame and changes every bit after it.
 

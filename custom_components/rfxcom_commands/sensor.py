@@ -55,6 +55,7 @@ class LastCodeSensor(ScannerSensor):
         scanner = self._scanner
         attributes: dict[str, Any] = {
             "scanning": scanner.running,
+            "address": scanner.address,
             "recent": scanner.recent,
             "packets": scanner.packets,
             "raw_packets": scanner.raw_packets,

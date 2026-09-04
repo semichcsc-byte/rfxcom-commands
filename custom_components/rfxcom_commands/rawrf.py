@@ -24,6 +24,12 @@ PACKET_TYPE_RAW = 0x7F
 # The firmware caps a burst at ten repeats.
 MAX_REPEATS = 10
 
+# How the pulses carry the bits. Only the first is decoded.
+ENCODING_PWM = "pwm"
+ENCODING_PPM = "ppm"
+ENCODING_MANCHESTER = "manchester"
+ENCODING_UNKNOWN = "unknown"
+
 # Limits imposed by the RFXtrx firmware.
 MAX_PULSES_PER_PACKET = 124
 MAX_PACKETS = 4
@@ -54,6 +60,16 @@ class Command:
     gap: int
     frames_seen: int
 
+    encoding: str = ENCODING_PWM
+    """How the pulses carry the bits. See `classify`."""
+
+    jitter_pct: float = 0.0
+    """Mean deviation of the measured pulses from the two ideal lengths.
+
+    A clean capture sits around a few percent. A high figure means the
+    receiver is straining, which is what an off-frequency remote looks like.
+    """
+
     def packets(self, repeats: int | None = None, seq: int = 0) -> list[bytes]:
         """Build the packets that replay this command."""
         return build_packets(self.pulses, repeats=repeats or self.repeats, seq=seq)
@@ -61,6 +77,43 @@ class Command:
     def events(self, repeats: int | None = None, seq: int = 0) -> list[str]:
         """Same, as hex strings for the `rfxtrx.send` action."""
         return [p.hex() for p in self.packets(repeats=repeats, seq=seq)]
+
+    @property
+    def hex(self) -> str:
+        """The bits as hex, which is what everyone else quotes codes in."""
+        return f"0x{int(self.bits, 2):0{(len(self.bits) + 3) // 4}X}"
+
+    @property
+    def inverted(self) -> str:
+        """The same pulses read at the opposite polarity.
+
+        Which way round a protocol calls its bits is arbitrary, so a code that
+        matches nothing often matches its own complement.
+        """
+        return self.bits.translate(str.maketrans("01", "10"))
+
+    @property
+    def frame_us(self) -> int:
+        """How long one frame takes, without its trailing gap."""
+        return sum(self.pulses[:-1])
+
+    @property
+    def burst_us(self) -> int:
+        """How long the whole press occupies the air.
+
+        Worth knowing: a receiver that coalesces a burst has to hold it for
+        this long, and one that does not will count the frames as presses.
+        """
+        return (self.frame_us + self.gap) * self.frames_seen
+
+    @property
+    def trustworthy(self) -> bool:
+        """Whether the bits mean anything.
+
+        Only mark-length encoding is decoded. The others are reported so a
+        wrong reading is not passed off as a right one.
+        """
+        return self.encoding == ENCODING_PWM
 
     @property
     def repeats(self) -> int:
@@ -158,6 +211,38 @@ def _frame_bits(frame: list[int], short: int, long: int) -> str:
     return "".join("1" if frame[i] > midpoint else "0" for i in range(0, len(frame), 2))
 
 
+def classify(frame: list[int], short: int, long: int) -> str:
+    """Work out how the pulses carry the bits.
+
+    Only mark-length encoding is decoded here. Saying which of the others a
+    capture is beats decoding it as if it were the one we handle, which is
+    what produced confident nonsense before.
+    """
+    midpoint = (short + long) / 2
+    marks = [p > midpoint for p in frame[0::2]]
+    spaces = [p > midpoint for p in frame[1::2]]
+
+    if len(set(marks)) > 1 and len(set(spaces)) > 1:
+        # Both vary. Mark-length encoding keeps every symbol the same width,
+        # so a constant mark+space says the bit is in the ratio, not the gap.
+        widths = {
+            frame[i] + frame[i + 1] for i in range(0, len(frame) - 1, 2)
+        }
+        spread = (max(widths) - min(widths)) / max(widths) if widths else 1.0
+        return ENCODING_PWM if spread < 0.25 else ENCODING_MANCHESTER
+    if len(set(marks)) == 1 and len(set(spaces)) > 1:
+        return ENCODING_PPM  # fixed pulse, the gap carries the bit
+    return ENCODING_UNKNOWN
+
+
+def _jitter_pct(frame: list[int], short: int, long: int) -> float:
+    """How far the measured pulses sit from the two ideal lengths."""
+    midpoint = (short + long) / 2
+    off = [abs(p - (long if p > midpoint else short)) / (long if p > midpoint else short)
+           for p in frame]
+    return round(100 * sum(off) / len(off), 1) if off else 0.0
+
+
 def decode(burst: list[bytes], *, min_frames: int = 3) -> Command:
     """Turn one captured burst into a replayable command.
 
@@ -222,6 +307,8 @@ def decode(burst: list[bytes], *, min_frames: int = 3) -> Command:
         long=long,
         gap=gap,
         frames_seen=len(candidates),
+        encoding=classify(reference, short, long),
+        jitter_pct=_jitter_pct(reference, short, long),
     )
 
 

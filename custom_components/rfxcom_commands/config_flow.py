@@ -414,9 +414,23 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         if step_id == "reconfigure":
             fields[vol.Optional(CONF_RELEARN, default=False)] = bool
 
+        command = self._command
         described = {
-            "bits": self._command.bits if self._command else "",
-            "frames": str(self._command.frames_seen if self._command else 0),
+            "bits": command.bits if command else "",
+            "hex": command.hex if command else "",
+            "frames": str(command.frames_seen if command else 0),
+            "quality": (
+                f"{command.encoding.upper()}, {command.jitter_pct}% jitter"
+                if command
+                else ""
+            )
+            + (
+                ""
+                if command is None or command.trustworthy
+                else " -- these bits are a mark-length reading of something "
+                "else, so they may not mean what the remote means. Replaying "
+                "the pulses still works."
+            ),
             "entity_id": entity_id,
         }
         described |= placeholders or {}

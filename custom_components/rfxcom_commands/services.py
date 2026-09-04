@@ -67,21 +67,28 @@ async def async_listen(hass: HomeAssistant, seconds: int) -> dict[str, Any]:
                     if record is None:
                         record = heard[command.bits] = {
                             "bits": command.bits,
-                            "times": 0,
-                            "frames": command.frames_seen,
+                            "hex": command.hex,
+                            "bit_count": len(command.bits),
+                            "inverted": command.inverted,
+                            "heard": 0,
+                            "repeats": command.frames_seen,
+                            "encoding": command.encoding,
+                            "jitter_pct": command.jitter_pct,
                             "short_us": command.short,
                             "long_us": command.long,
                             "gap_us": command.gap,
+                            "frame_us": command.frame_us,
+                            "burst_us": command.burst_us,
                             "pulses": len(command.pulses),
                         }
-                    record["times"] += 1
+                    record["heard"] += 1
                     # Fired as it happens, so it can also be watched live.
                     hass.bus.async_fire(EVENT_RAW_COMMAND, dict(record))
         except GatewayError as err:
             raise HomeAssistantError(str(err)) from err
 
     return {
-        "heard": sorted(heard.values(), key=lambda r: r["times"], reverse=True),
+        "heard": sorted(heard.values(), key=lambda r: r["heard"], reverse=True),
         "packets": listener.packets_seen,
         "raw_packets": listener.raw_seen,
         "bursts_dropped": capture.bursts_dropped,
@@ -91,10 +98,12 @@ async def async_listen(hass: HomeAssistant, seconds: int) -> dict[str, Any]:
 def format_report(result: dict[str, Any]) -> str:
     """The same findings as prose, for a dialog with nowhere to put a table."""
     lines = [
-        f"**{index}. `{record['bits']}`**\n"
-        f"heard {record['times']}x, {record['frames']} agreeing frames, "
+        f"**{index}. `{record['hex']}`**\n"
+        f"`{record['bits']}` ({record['bit_count']} bits)\n"
+        f"sent {record['repeats']}x per press, heard {record['heard']}x, "
+        f"{record['encoding'].upper()}, {record['jitter_pct']}% jitter\n"
         f"pulses {record['short_us']}/{record['long_us']} us, "
-        f"gap {record['gap_us']} us"
+        f"gap {record['gap_us']} us, burst {record['burst_us'] / 1000:.0f} ms"
         for index, record in enumerate(result["heard"], start=1)
     ]
 
