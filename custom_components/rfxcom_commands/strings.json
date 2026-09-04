@@ -31,6 +31,30 @@
       "no_gateway": "No RFXCOM integration is set up. Add that first: this integration borrows its connection to the device rather than opening a second one."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Watch the airwaves",
+        "description": "Listens to everything within range and shows each command it hears, whether or not the RFXCOM can normally decode it.\n\nUse it to find out if a remote is being heard at all, whether two buttons really send different codes, and whether something nearby is transmitting over you.\n\nThe RFXCOM decodes nothing else while this runs.",
+        "data": {
+          "seconds": "Listen for"
+        }
+      },
+      "heard": {
+        "title": "What was heard",
+        "description": "{report}",
+        "data": {
+          "again": "Listen again"
+        }
+      }
+    },
+    "progress": {
+      "listening": "Listening. Press the buttons you want to see."
+    },
+    "abort": {
+      "watched": "Done listening."
+    }
+  },
   "config_subentries": {
     "command": {
       "title": "Command",

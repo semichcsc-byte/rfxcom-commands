@@ -31,6 +31,30 @@
       "no_gateway": "Não há nenhuma integração RFXCOM configurada. Adiciona-a primeiro: esta integração usa a ligação dela ao dispositivo em vez de abrir uma segunda."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ver o que anda no ar",
+        "description": "Fica à escuta de tudo o que estiver ao alcance e mostra cada comando que ouvir, mesmo os que o RFXCOM normalmente não sabe descodificar.\n\nServe para saber se um comando está sequer a ser ouvido, se dois botões enviam mesmo códigos diferentes, e se há algo por perto a transmitir por cima.\n\nEnquanto isto corre o RFXCOM não descodifica mais nada.",
+        "data": {
+          "seconds": "Escutar durante"
+        }
+      },
+      "heard": {
+        "title": "O que se ouviu",
+        "description": "{report}",
+        "data": {
+          "again": "Escutar outra vez"
+        }
+      }
+    },
+    "progress": {
+      "listening": "À escuta. Carrega nos botões que queres ver."
+    },
+    "abort": {
+      "watched": "Escuta terminada."
+    }
+  },
   "config_subentries": {
     "command": {
       "title": "Comando",

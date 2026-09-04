@@ -13,6 +13,7 @@ from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
     ConfigSubentryFlow,
+    OptionsFlow,
     SubentryFlowResult,
 )
 from homeassistant.const import CONF_ENTITY_ID
@@ -22,6 +23,8 @@ from homeassistant.util import slugify
 
 from .capture import Capture
 from .const import (
+    ATTR_SECONDS,
+    CONF_AGAIN,
     CONF_AREA_ID,
     CONF_BITS,
     CONF_EVENTS,
@@ -31,16 +34,29 @@ from .const import (
     CONF_REPEATS,
     CONF_TEST,
     DEFAULT_REPEATS,
+    DEFAULT_WATCH_SECONDS,
     DOMAIN,
     KIND_BUTTON,
     KIND_SWITCH,
     LEARN_TIMEOUT,
+    MAX_WATCH_SECONDS,
     SUBENTRY_TYPE_COMMAND,
 )
 from .gateway import GatewayError, RawListener, async_send, find_entry
 from .rawrf import Command, RawRFError, build_packets
+from .services import async_watch_report
 
 _LOGGER = logging.getLogger(__name__)
+
+SECONDS = selector.NumberSelector(
+    selector.NumberSelectorConfig(
+        min=1,
+        max=MAX_WATCH_SECONDS,
+        step=1,
+        unit_of_measurement="seconds",
+        mode=selector.NumberSelectorMode.BOX,
+    )
+)
 
 KIND = selector.SelectSelector(
     selector.SelectSelectorConfig(
@@ -89,6 +105,11 @@ class RFXCOMCommandsConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> dict[str, type[ConfigSubentryFlow]]:
         return {SUBENTRY_TYPE_COMMAND: CommandSubentryFlowHandler}
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> WatchOptionsFlow:
+        return WatchOptionsFlow()
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -104,6 +125,83 @@ class RFXCOMCommandsConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_show_form(step_id="user", data_schema=vol.Schema({}))
 
         return self.async_create_entry(title="RFXCOM Commands", data={})
+
+
+class WatchOptionsFlow(OptionsFlow):
+    """Listen, and show every command the RFXCOM heard.
+
+    The integration page is where people already are, so this lives behind its
+    Configure button rather than in Developer tools.
+    """
+
+    def __init__(self) -> None:
+        self._task: asyncio.Task[str] | None = None
+        self._report = ""
+        self._seconds = DEFAULT_WATCH_SECONDS
+
+    @callback
+    def async_remove(self) -> None:
+        task, self._task = self._task, None
+        if task is not None and not task.done():
+            task.cancel()
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is None:
+            return self.async_show_form(
+                step_id="init",
+                data_schema=vol.Schema(
+                    {
+                        vol.Optional(
+                            ATTR_SECONDS, default=DEFAULT_WATCH_SECONDS
+                        ): SECONDS
+                    }
+                ),
+            )
+        self._seconds = int(user_input[ATTR_SECONDS])
+        return await self.async_step_listening()
+
+    async def async_step_listening(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if self._task is None:
+            self._task = self.hass.async_create_task(
+                async_watch_report(self.hass, self._seconds)
+            )
+
+        if not self._task.done():
+            return self.async_show_progress(
+                step_id="listening",
+                progress_action="listening",
+                progress_task=self._task,
+            )
+
+        try:
+            self._report = self._task.result()
+        except Exception as err:  # noqa: BLE001 - shown to the user verbatim
+            _LOGGER.exception("Watching failed")
+            self._report = str(err)
+        finally:
+            self._task = None
+        return self.async_show_progress_done(next_step_id="heard")
+
+    async def async_step_heard(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is None:
+            return self.async_show_form(
+                step_id="heard",
+                data_schema=vol.Schema(
+                    {vol.Optional(CONF_AGAIN, default=False): bool}
+                ),
+                description_placeholders={"report": self._report},
+            )
+        if user_input.get(CONF_AGAIN):
+            return await self.async_step_listening()
+        # Abort rather than create an entry: there is nothing to save, and
+        # saving would reload the integration for no reason.
+        return self.async_abort(reason="watched")
 
 
 class CommandSubentryFlowHandler(ConfigSubentryFlow):

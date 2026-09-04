@@ -7,6 +7,7 @@ RFXTRX_DATA_OBJECT = "rfxobject"
 RFXTRX_SERVICE_SEND = "send"
 
 CONF_AREA_ID = "area_id"
+CONF_AGAIN = "again"
 CONF_EVENTS = "events"
 CONF_BITS = "bits"
 CONF_KIND = "kind"

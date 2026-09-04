@@ -118,18 +118,20 @@ right, because that is the only way back.
 
 ## Watch the airwaves
 
-The **RFXCOM Commands: watch the airwaves** action listens in raw mode and
-reports every command it hears, decodable or not, with the bits, the pulse
-timings and how many times each one arrived.
-
-Each one also fires an `rfxcom_commands_raw` event as it happens, so you can
-watch them live under **Developer tools → Events**. Run the action from
-**Developer tools → Actions** in another tab and press buttons on your remote.
+Press **Configure** on the integration's page. It listens to everything within
+range and shows each command it heard: the bits, how many times it arrived, and
+the pulse timings. Tick **Listen again** to go round once more.
 
 This is the quickest way to find out whether a remote is being heard at all,
 whether two buttons really send different codes, and whether something else
-nearby is transmitting on top of you. The RFXCOM decodes nothing else while it
-runs, so it stops on its own.
+nearby is transmitting on top of you.
+
+The same thing is available as the **RFXCOM Commands: watch** action if you
+want the findings as structured data. Either way each command also fires an
+`rfxcom_commands_raw` event as it arrives, so it can be watched live under
+Developer tools → Events, or used as an automation trigger.
+
+The RFXCOM decodes nothing else while it listens, so it always stops on its own.
 
 ## Repeats
 

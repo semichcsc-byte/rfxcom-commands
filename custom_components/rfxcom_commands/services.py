@@ -24,11 +24,11 @@ from .capture import Capture
 from .const import (
     ATTR_SECONDS,
     DEFAULT_WATCH_SECONDS,
+    DOMAIN,
     EVENT_RAW_COMMAND,
     MAX_WATCH_SECONDS,
     SERVICE_WATCH,
 )
-from .const import DOMAIN
 from .gateway import GatewayError, RawListener
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,19 +45,20 @@ WATCH_SCHEMA = vol.Schema(
 _in_progress = asyncio.Lock()
 
 
-async def _async_watch(call: ServiceCall) -> ServiceResponse:
-    """Listen for a while and report every command heard."""
-    hass = call.hass
-    seconds = call.data[ATTR_SECONDS]
+async def async_listen(hass: HomeAssistant, seconds: int) -> dict[str, Any]:
+    """Collect every command heard within the window.
 
+    Each one is announced on the event bus as it arrives, so it can be watched
+    live as well as read afterwards.
+    """
     if _in_progress.locked():
         raise HomeAssistantError(
             "Already listening. Raw mode belongs to the device, so only one "
             "capture can run at a time."
         )
 
+    heard: dict[str, dict[str, Any]] = {}
     async with _in_progress:
-        heard: dict[str, dict[str, Any]] = {}
         try:
             async with RawListener(hass) as listener:
                 capture = Capture(listener)
@@ -74,8 +75,7 @@ async def _async_watch(call: ServiceCall) -> ServiceResponse:
                             "pulses": len(command.pulses),
                         }
                     record["times"] += 1
-                    # Fired as it happens, so it can be watched live in
-                    # Developer tools -> Events.
+                    # Fired as it happens, so it can also be watched live.
                     hass.bus.async_fire(EVENT_RAW_COMMAND, dict(record))
         except GatewayError as err:
             raise HomeAssistantError(str(err)) from err
@@ -86,6 +86,46 @@ async def _async_watch(call: ServiceCall) -> ServiceResponse:
         "raw_packets": listener.raw_seen,
         "bursts_dropped": capture.bursts_dropped,
     }
+
+
+def format_report(result: dict[str, Any]) -> str:
+    """The same findings as prose, for a dialog with nowhere to put a table."""
+    lines = [
+        f"**{index}. `{record['bits']}`**\n"
+        f"heard {record['times']}x, {record['frames']} agreeing frames, "
+        f"pulses {record['short_us']}/{record['long_us']} us, "
+        f"gap {record['gap_us']} us"
+        for index, record in enumerate(result["heard"], start=1)
+    ]
+
+    if not lines:
+        if result["packets"] == 0:
+            lines = ["Nothing at all was received."]
+        elif result["raw_packets"] == 0:
+            lines = [
+                f"The receiver handed over {result['packets']} transmissions but "
+                "none as raw pulse data, so it never switched into raw mode."
+            ]
+        else:
+            lines = [
+                f"{result['raw_packets']} raw packets arrived but none of them "
+                "formed a readable transmission."
+            ]
+
+    lines.append(
+        f"_{result['packets']} packets from the receiver, "
+        f"{result['raw_packets']} raw, {result['bursts_dropped']} bursts cut "
+        "short by another transmission._"
+    )
+    return "\n\n".join(lines)
+
+
+async def async_watch_report(hass: HomeAssistant, seconds: int) -> str:
+    return format_report(await async_listen(hass, seconds))
+
+
+async def _async_watch(call: ServiceCall) -> ServiceResponse:
+    return await async_listen(call.hass, call.data[ATTR_SECONDS])
 
 
 def async_setup_services(hass: HomeAssistant) -> None:
