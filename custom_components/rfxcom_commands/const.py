@@ -38,6 +38,11 @@ MAX_WATCH_SECONDS = 120
 MAX_SCAN_SECONDS = 600
 RECENT_CODES = 10
 
+# Distinct codes from one address, none of them repeating, before saying it
+# looks like a rolling code. Two could be an alternating bit, which is
+# perfectly replayable; three starts to mean something.
+ROLLING_CODES_HINT = 3
+
 # The scanner's band choice: leave the device where it already is.
 BAND_AS_FOUND = "As found"
 

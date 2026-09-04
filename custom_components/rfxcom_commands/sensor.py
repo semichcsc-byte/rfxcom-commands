@@ -28,6 +28,7 @@ async def async_setup_entry(
             LastRepeatsSensor(entry),
             LastJitterSensor(entry),
             LastEncodingSensor(entry),
+            DistinctCodesSensor(entry),
             ReceiverBandSensor(entry),
         ]
     )
@@ -135,6 +136,42 @@ class LastEncodingSensor(ScannerSensor):
     def native_value(self) -> str | None:
         last = self._scanner.last
         return last["encoding"] if last else None
+
+
+class DistinctCodesSensor(ScannerSensor):
+    """How many different codes this scan has heard.
+
+    Read together with `repeating`: several codes from one address that never
+    repeat is what a rolling code looks like, and a rolling code cannot be
+    replayed by anything.
+    """
+
+    _attr_name = "Codes heard"
+    _attr_icon = "mdi:counter"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _key = "codes-heard"
+
+    @property
+    def native_value(self) -> int:
+        return len(self._scanner.recent)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        scanner = self._scanner
+        attributes: dict[str, Any] = {
+            "repeating": scanner.repeating,
+            "looks_like_rolling": scanner.looks_like_rolling,
+        }
+        if scanner.looks_like_rolling:
+            attributes["note"] = (
+                "Several codes from one address, none of them repeating. That "
+                "is what a rolling code looks like, and a rolling code cannot "
+                "be replayed by anything, so learning one would produce a "
+                "button that does nothing. It is only an indication: a remote "
+                "with an alternating bit also sends more than one code and is "
+                "perfectly replayable."
+            )
+        return attributes
 
 
 class ReceiverBandSensor(ScannerSensor):

@@ -222,7 +222,12 @@ moment. Just try again.
   up on or off. A switch keeps track of what it asked for, which is the best
   any one-way remote allows; accept that it and the light can drift apart.
 - **Rolling codes.** Anything that changes its transmission between presses —
-  most car remotes, most garage doors, KeeLoq — is replay-proof by design.
+  most car remotes, most garage doors, KeeLoq — is replay-proof by design, and
+  no recorder reproduces one. Turn on the scanner and press the same button
+  three times: a fixed code gives one entry heard three times, a rolling code
+  gives three entries heard once each. **Codes heard** flags that pattern, with
+  the caveat that a remote with an alternating bit also sends more than one
+  code and replays perfectly.
 - **Hear its own transmissions.** Useful to know: pressing a button here will
   not fire an `rfxtrx_event`, so you cannot use that to confirm a send.
 

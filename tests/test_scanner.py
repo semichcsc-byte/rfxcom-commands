@@ -114,6 +114,46 @@ async def test_switching_the_scanner_off_stops_it(
     assert hass.states.get(SCANNER).state == "off"
 
 
+async def test_codes_that_never_repeat_look_like_rolling(
+    hass: HomeAssistant,
+) -> None:
+    """A rolling code cannot be replayed by anything, so learning one would
+    produce a button that silently does nothing."""
+    scanner = scanner_module.Scanner(hass)
+
+    address = "1010101010"
+    for tail in ("0001", "1010", "0110"):
+        scanner._remember(address + tail, 4)
+
+    assert scanner.address == address
+    assert not scanner.repeating
+    assert scanner.looks_like_rolling
+
+
+async def test_a_code_heard_twice_is_not_rolling(hass: HomeAssistant) -> None:
+    """Repeating is the whole difference, so one repeat settles it."""
+    scanner = scanner_module.Scanner(hass)
+
+    for bits in ("10101010100001", "10101010100010", "10101010100011"):
+        scanner._remember(bits, 4)
+    scanner._remember("10101010100001", 4)
+
+    assert scanner.repeating
+    assert not scanner.looks_like_rolling
+
+
+async def test_two_codes_are_not_enough_to_suspect_rolling(
+    hass: HomeAssistant,
+) -> None:
+    """A remote with an alternating bit sends two and replays perfectly."""
+    scanner = scanner_module.Scanner(hass)
+
+    scanner._remember("10101010100001", 4)
+    scanner._remember("10101010100010", 4)
+
+    assert not scanner.looks_like_rolling
+
+
 async def test_the_band_is_chosen_before_listening(
     hass: HomeAssistant, rfxtrx, monkeypatch
 ) -> None:

@@ -19,7 +19,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant, callback
 
 from .capture import Capture
-from .const import MAX_SCAN_SECONDS, RECENT_CODES
+from .const import MAX_SCAN_SECONDS, RECENT_CODES, ROLLING_CODES_HINT
 from .gateway import GatewayError, RawListener
 
 _LOGGER = logging.getLogger(__name__)
@@ -122,6 +122,26 @@ class Scanner:
         finally:
             self._task = None
             self._notify()
+
+    @property
+    def repeating(self) -> bool:
+        """Whether any code was heard more than once."""
+        return any(seen["heard"] > 1 for seen in self.recent)
+
+    @property
+    def looks_like_rolling(self) -> bool:
+        """Several codes from one address, none of them ever repeating.
+
+        That is the signature of a rolling code, which cannot be replayed by
+        anyone. It is only an indication: a remote with an alternating bit
+        gives two codes and is perfectly replayable, so this never decides
+        anything on the user's behalf.
+        """
+        return (
+            len(self.recent) >= ROLLING_CODES_HINT
+            and bool(self.address)
+            and not self.repeating
+        )
 
     def _remember(self, bits: str, repeats: int) -> None:
         for seen in self.recent:
