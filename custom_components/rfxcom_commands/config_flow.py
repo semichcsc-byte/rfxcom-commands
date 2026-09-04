@@ -36,6 +36,7 @@ from .const import (
     MAX_REPEATS,
     MIN_REPEATS,
     POLL_INTERVAL,
+    QUIET_PERIOD,
     SUBENTRY_TYPE_COMMAND,
 )
 from .gateway import GatewayError, RawListener, async_send, find_entry
@@ -234,11 +235,21 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             seen = 0
             found: dict[str, Command] = {}
             repeats: dict[str, int] = {}
+            last_heard = 0.0
 
             while time.monotonic() < deadline:
+                # Yield unconditionally. Awaiting a queue that already has an
+                # item does not reach the event loop, so a fast enough stream
+                # of packets would otherwise let this loop starve Home
+                # Assistant for the whole capture window.
+                await asyncio.sleep(0)
+
                 packet = await listener.next_packet(timeout=POLL_INTERVAL)
                 if packet is None:
+                    if found and time.monotonic() - last_heard > QUIET_PERIOD:
+                        break  # button released, and we have something
                     continue
+                last_heard = time.monotonic()
 
                 seen += 1
                 if seen > MAX_PACKETS_PER_CAPTURE:

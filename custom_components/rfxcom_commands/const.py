@@ -36,3 +36,7 @@ MAX_PACKETS_PER_CAPTURE = 2000
 # Hearing the same command this many times means the button is being held, so
 # there is no point listening for the rest of the window.
 CONFIDENT_REPEATS = 3
+
+# Once something has been captured, this much silence means the button has been
+# released. Without it a single press would wait out the whole window.
+QUIET_PERIOD = 1.5

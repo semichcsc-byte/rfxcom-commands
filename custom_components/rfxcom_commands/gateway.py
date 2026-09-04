@@ -73,17 +73,19 @@ def _rfx_object(hass: HomeAssistant) -> Any:
 
 
 def supported_protocols() -> list[str]:
-    """Every receive protocol this build of pyRFXtrx knows about."""
+    """Every receive protocol this build of pyRFXtrx knows about.
+
+    The table hangs off the Status packet class, and its shape is (byte, bit)
+    positions in the "set mode" command — the same thing get_recmode_tuple
+    resolves a name to.
+    """
     from RFXtrx import lowlevel  # noqa: PLC0415
 
-    names: set[str] = set()
-    for entry in getattr(lowlevel, "RECMODES", None) or []:
-        for name in entry or []:
-            if name:
-                names.add(name)
+    groups = getattr(getattr(lowlevel, "Status", None), "RECMODES", None)
+    names = sorted({mode for group in groups or [] for mode in group or [] if mode})
     if not names:
         raise GatewayError("This version of pyRFXtrx exposes no protocol list")
-    return sorted(names)
+    return names
 
 
 def current_protocols(hass: HomeAssistant) -> list[str]:
