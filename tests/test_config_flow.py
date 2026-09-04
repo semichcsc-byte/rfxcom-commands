@@ -21,12 +21,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from fixtures import CAPTURE, EXPECTED_BITS  # noqa: E402
 
+from custom_components import rfxcom_commands  # noqa: E402
 from custom_components.rfxcom_commands import config_flow  # noqa: E402
 from custom_components.rfxcom_commands.const import (  # noqa: E402
     CONF_EVENTS,
+    CONF_KIND,
     CONF_REPEATS,
     CONF_TEST,
     DOMAIN,
+    KIND_SWITCH,
 )
 
 
@@ -69,8 +72,18 @@ def rfxtrx(hass: HomeAssistant):
 
 @pytest.fixture
 def captures(monkeypatch):
-    """Feed the flow a real burst."""
-    monkeypatch.setattr(config_flow, "RawListener", FakeListener)
+    """Feed the flow a real burst, twice, as a held button would."""
+    monkeypatch.setattr(
+        config_flow, "RawListener", lambda hass: FakeListener(hass, packets=CAPTURE * 2)
+    )
+
+
+@pytest.fixture
+def heard_once(monkeypatch):
+    """Feed the flow a single burst, which is not enough to trust."""
+    monkeypatch.setattr(
+        config_flow, "RawListener", lambda hass: FakeListener(hass, packets=CAPTURE)
+    )
 
 
 @pytest.fixture
@@ -83,13 +96,14 @@ def nothing_heard(monkeypatch):
 
 @pytest.fixture
 def no_transmit(monkeypatch):
-    """Record test transmissions instead of performing them."""
+    """Record transmissions instead of performing them."""
     sent: list[list[str]] = []
 
     async def _send(hass, events):
         sent.append(list(events))
 
     monkeypatch.setattr(config_flow, "async_send", _send)
+    monkeypatch.setattr(rfxcom_commands, "async_send", _send)
     return sent
 
 
@@ -180,6 +194,22 @@ async def test_silence_leads_to_the_failure_step(
     assert "Nothing was received" in result["description_placeholders"]["error"]
 
 
+async def test_a_command_heard_only_once_is_refused(
+    hass: HomeAssistant, rfxtrx, heard_once
+) -> None:
+    """A reading with nothing to check it against dropped a bit in the field.
+
+    It decoded cleanly and produced a command that looked right and did
+    nothing, which is the worst possible outcome, so one sighting is not enough.
+    """
+    entry = await setup_integration(hass)
+    result = await start_learning(hass, entry)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "failed"
+    assert "only once" in result["description_placeholders"]["error"]
+
+
 async def test_naming_creates_a_button(
     hass: HomeAssistant, rfxtrx, captures
 ) -> None:
@@ -230,6 +260,50 @@ async def test_repeats_are_baked_into_the_saved_command(
         result["flow_id"], {"name": "Fan light", CONF_REPEATS: 3, CONF_TEST: False}
     )
     assert bytes.fromhex(result["data"][CONF_EVENTS][0])[4] == 3
+
+
+async def test_a_toggle_button_becomes_a_switch(
+    hass: HomeAssistant, rfxtrx, captures, no_transmit
+) -> None:
+    """A remote whose button toggles has nowhere to keep the state otherwise."""
+    entry = await setup_integration(hass)
+    result = await start_learning(hass, entry)
+
+    await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            "name": "Fan light",
+            CONF_KIND: KIND_SWITCH,
+            CONF_REPEATS: 10,
+            CONF_TEST: False,
+        },
+    )
+    await hass.async_block_till_done()
+
+    entity_id = "switch.rfxcom_commands_fan_light"
+    assert hass.states.get("button.rfxcom_commands_fan_light") is None
+    state = hass.states.get(entity_id)
+    assert state is not None and state.state == "off"
+    assert state.attributes["assumed_state"] is True
+
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": entity_id}, blocking=True
+    )
+    assert hass.states.get(entity_id).state == "on"
+    assert len(no_transmit) == 1
+
+    # Already on, and the remote only has the one code: sending it would turn
+    # the light off.
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": entity_id}, blocking=True
+    )
+    assert len(no_transmit) == 1
+
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": entity_id}, blocking=True
+    )
+    assert hass.states.get(entity_id).state == "off"
+    assert len(no_transmit) == 2
 
 
 async def test_editing_names_the_entity_and_can_fire_it(

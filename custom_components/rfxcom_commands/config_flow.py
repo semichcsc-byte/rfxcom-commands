@@ -16,7 +16,7 @@ from homeassistant.config_entries import (
     ConfigSubentryFlow,
     SubentryFlowResult,
 )
-from homeassistant.const import CONF_ENTITY_ID, Platform
+from homeassistant.const import CONF_ENTITY_ID
 from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er, selector
 from homeassistant.util import slugify
@@ -25,6 +25,7 @@ from .const import (
     CONF_AREA_ID,
     CONF_BITS,
     CONF_EVENTS,
+    CONF_KIND,
     CONF_PULSES,
     CONF_RELEARN,
     CONF_REPEATS,
@@ -32,10 +33,13 @@ from .const import (
     CONFIDENT_REPEATS,
     DEFAULT_REPEATS,
     DOMAIN,
+    KIND_BUTTON,
+    KIND_SWITCH,
     LEARN_TIMEOUT,
     MAX_PACKETS_PER_CAPTURE,
     MAX_REPEATS,
     MIN_REPEATS,
+    MIN_SIGHTINGS,
     POLL_INTERVAL,
     QUIET_PERIOD,
     SUBENTRY_TYPE_COMMAND,
@@ -55,6 +59,14 @@ _LOGGER = logging.getLogger(__name__)
 REPEATS = selector.NumberSelector(
     selector.NumberSelectorConfig(
         min=MIN_REPEATS, max=MAX_REPEATS, step=1, mode=selector.NumberSelectorMode.BOX
+    )
+)
+
+KIND = selector.SelectSelector(
+    selector.SelectSelectorConfig(
+        options=[KIND_BUTTON, KIND_SWITCH],
+        mode=selector.SelectSelectorMode.LIST,
+        translation_key=CONF_KIND,
     )
 )
 
@@ -134,6 +146,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         self._subentry_id = subentry.subentry_id
         self._defaults = {
             "name": subentry.title,
+            CONF_KIND: subentry.data.get(CONF_KIND, KIND_BUTTON),
             CONF_AREA_ID: subentry.data.get(CONF_AREA_ID),
             CONF_REPEATS: subentry.data.get(CONF_REPEATS, DEFAULT_REPEATS),
         }
@@ -165,6 +178,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         if user_input.get(CONF_RELEARN):
             self._defaults |= {
                 "name": user_input["name"],
+                CONF_KIND: user_input.get(CONF_KIND, KIND_BUTTON),
                 CONF_AREA_ID: user_input.get(CONF_AREA_ID),
                 CONF_REPEATS: int(user_input[CONF_REPEATS]),
             }
@@ -267,8 +281,11 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
 
                 packet = await listener.next_packet(timeout=POLL_INTERVAL)
                 if packet is None:
-                    if found and time.monotonic() - last_heard > QUIET_PERIOD:
-                        break  # button released, and we have something
+                    quiet = time.monotonic() - last_heard > QUIET_PERIOD
+                    if quiet and any(
+                        count >= MIN_SIGHTINGS for count in repeats.values()
+                    ):
+                        break  # button released, and we heard it more than once
                     continue
                 last_heard = time.monotonic()
 
@@ -303,10 +320,20 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
 
             # Kept so the picker can show how often each one was heard.
             self._sightings = repeats
+            confirmed = [
+                command
+                for command in found.values()
+                if repeats[command.bits] >= MIN_SIGHTINGS
+            ]
+            if found and not confirmed:
+                self._error = (
+                    "Heard the remote, but only once, so there was nothing to "
+                    "check the reading against. A single misread bit produces a "
+                    "command that looks right and does nothing. Press and hold "
+                    "the button for a second or two."
+                )
             # Most-repeated first: a held button beats a passing neighbour.
-            return sorted(
-                found.values(), key=lambda c: repeats[c.bits], reverse=True
-            )
+            return sorted(confirmed, key=lambda c: repeats[c.bits], reverse=True)
 
     async def async_step_failed(
         self, user_input: dict[str, Any] | None = None
@@ -366,7 +393,8 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         placeholders: dict[str, str] | None = None,
     ) -> SubentryFlowResult:
         current = {**self._defaults, **(user_input or {})}
-        entity_id = self._entity_id_for(current.get("name", ""))
+        kind = current.get(CONF_KIND, KIND_BUTTON)
+        entity_id = self._entity_id_for(current.get("name", ""), kind)
         fields: dict[Any, Any] = {}
         if step_id == "reconfigure":
             # Read-only, purely so the id can be selected and copied.
@@ -375,6 +403,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             ] = selector.TextSelector(selector.TextSelectorConfig(read_only=True))
         fields |= {
             vol.Required("name", default=current.get("name", "")): str,
+            vol.Required(CONF_KIND, default=kind): KIND,
             vol.Optional(
                 CONF_AREA_ID, description={"suggested_value": current.get(CONF_AREA_ID)}
             ): selector.AreaSelector(),
@@ -388,6 +417,9 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
 
         described = {
             "bits": self._command.bits if self._command else "",
+            "heard": str(
+                self._sightings.get(self._command.bits, 0) if self._command else 0
+            ),
             "entity_id": entity_id,
         }
         described |= placeholders or {}
@@ -398,8 +430,8 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             description_placeholders=described,
         )
 
-    def _entity_id_for(self, name: str) -> str:
-        """The button's entity id, so it is visible before anything is saved.
+    def _entity_id_for(self, name: str, kind: str) -> str:
+        """The entity id, so it is visible before anything is saved.
 
         A form cannot re-render as the name is typed, so on a new command this
         is only exact once the name is known -- after ticking Test, or on
@@ -410,13 +442,11 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             for record in er.async_entries_for_config_entry(
                 registry, self._entry.entry_id
             ):
-                if record.unique_id == self._subentry_id:
+                if record.unique_id == self._subentry_id and record.domain == kind:
                     return record.entity_id
         if not name:
-            return f"{Platform.BUTTON}.{slugify(self._entry.title)}_<name>"
-        return registry.async_generate_entity_id(
-            Platform.BUTTON, f"{self._entry.title} {name}"
-        )
+            return f"{kind}.{slugify(self._entry.title)}_<name>"
+        return registry.async_generate_entity_id(kind, f"{self._entry.title} {name}")
 
     def _save(
         self, user_input: dict[str, Any], *, pulses: list[int], bits: str
@@ -427,6 +457,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             CONF_EVENTS: [p.hex() for p in build_packets(pulses, repeats=repeats)],
             CONF_REPEATS: repeats,
             CONF_BITS: bits,
+            CONF_KIND: user_input.get(CONF_KIND, KIND_BUTTON),
             CONF_AREA_ID: user_input.get(CONF_AREA_ID),
         }
         title = user_input["name"]

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant
@@ -13,10 +11,8 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import RFXCOMConfigEntry, RFXCOMRuntime
-from .const import CONF_AREA_ID, CONF_EVENTS, DOMAIN
+from .const import CONF_AREA_ID, CONF_EVENTS, CONF_KIND, DOMAIN, KIND_BUTTON
 from .gateway import GatewayError
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -24,28 +20,14 @@ async def async_setup_entry(
     entry: RFXCOMConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    _prune_removed_commands(hass, entry)
-
     # Deliberately not passing config_subentry_id: every button hangs off the one
     # physical gateway, and a device can only belong to a single subentry, so
     # tagging them would make each new command steal the device from the last.
     async_add_entities(
-        RFXCOMCommandButton(entry, subentry) for subentry in entry.subentries.values()
+        RFXCOMCommandButton(entry, subentry)
+        for subentry in entry.subentries.values()
+        if subentry.data.get(CONF_KIND, KIND_BUTTON) == KIND_BUTTON
     )
-
-
-def _prune_removed_commands(hass: HomeAssistant, entry: RFXCOMConfigEntry) -> None:
-    """Drop registry entries for commands that no longer exist.
-
-    Home Assistant cleans up entities owned by a subentry automatically; ours are
-    not, so deleting a command would otherwise leave its button behind.
-    """
-    registry = er.async_get(hass)
-    live = set(entry.subentries)
-    for record in er.async_entries_for_config_entry(registry, entry.entry_id):
-        if record.unique_id not in live:
-            _LOGGER.debug("Removing %s, its command is gone", record.entity_id)
-            registry.async_remove(record.entity_id)
 
 
 class RFXCOMCommandButton(ButtonEntity):

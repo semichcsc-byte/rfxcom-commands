@@ -3,8 +3,8 @@
 [![Validate](https://github.com/semichcsc-byte/rfxcom-commands/actions/workflows/validate.yml/badge.svg)](https://github.com/semichcsc-byte/rfxcom-commands/actions/workflows/validate.yml)
 [![HACS custom](https://img.shields.io/badge/HACS-custom-41BDF5.svg)](https://hacs.xyz)
 
-Learn 433 MHz remotes with an RFXCOM and get a Home Assistant button for each
-one — including remotes the RFXCOM cannot decode.
+Learn 433 MHz remotes with an RFXCOM and get a Home Assistant button or switch
+for each one — including remotes the RFXCOM cannot decode.
 
 ## Read this before installing
 
@@ -89,16 +89,32 @@ integration by itself.
 On the integration's page, press **Learn a command**, then press and hold the
 button on your remote for a second or two, within a few metres of the RFXCOM.
 
-Holding matters. The integration only accepts a capture where the repeated
-frames of a single press agree with each other. A remote repeats itself and
-noise does not, so this is what separates a real capture from a stray
-neighbour's doorbell. Too short a press and it will ask you to try again.
+Holding matters. A frame that arrives once is a frame nothing checked, and a
+single misread bit decodes into a command that looks perfectly plausible and
+does nothing. So the integration keeps listening until it has heard the same
+bits at least twice, from separate transmissions, on top of requiring the
+repeated frames within each one to agree. A remote repeats itself and noise
+does not. Too short a press and it will ask you to try again.
 
-Then name the command and choose an area. Tick **Test before saving** to
-transmit it and check it does the right thing; nothing is saved until you leave
-that box unticked, so try as often as you like.
+Then name the command, choose whether it should be a **button** or a
+**switch**, and pick an area. Tick **Test before saving** to transmit it and
+check it does the right thing; nothing is saved until you leave that box
+unticked, so try as often as you like.
 
-Each command you save becomes a button entity, grouped under the gateway.
+Each command you save becomes an entity, grouped under the gateway.
+
+## Button or switch
+
+Pick **button** when the remote's button does one thing: a doorbell, a scene,
+"fan up".
+
+Pick **switch** when the remote's button toggles something on and off, which is
+what most ceiling fan lights do. There is only one code, so the switch sends it
+when the state needs to change and does nothing when it already matches. It has
+no way to know what actually happened, so it is marked as assumed state and
+shows what it last asked for. If it drifts out of step — someone used the
+physical remote, or a transmission was lost — press it again to line it back
+up.
 
 ### What happens behind the scenes
 
@@ -116,8 +132,9 @@ usual protocols active.
 Open the command from the integration's page.
 
 Renaming it or moving it to another area keeps the same entity, so dashboards,
-automations and scripts carry on working. Tick **Capture the command again** to
-recapture and keep everything else.
+automations and scripts carry on working. Changing it between a button and a
+switch does replace the entity. Tick **Capture the command again** to recapture
+and keep everything else, or **Test it now** to fire it and see what happens.
 
 **Repeats** is how many times each press transmits the command, 1 to 10. Leave
 it at 10 unless you have a reason not to. See below.
@@ -143,10 +160,10 @@ moment. Just try again.
 
 ## What this cannot do
 
-- **Read state.** A learned button transmits; it never knows what happened.
+- **Read state.** A learned command transmits; it never knows what happened.
   For a toggle-only remote, Home Assistant cannot tell whether the light ended
-  up on or off. Pair the button with an `input_boolean` if you need to track
-  it, and accept that the two can drift apart.
+  up on or off. A switch keeps track of what it asked for, which is the best
+  any one-way remote allows; accept that it and the light can drift apart.
 - **Rolling codes.** Anything that changes its transmission between presses —
   most car remotes, most garage doors, KeeLoq — is replay-proof by design.
 - **Hear its own transmissions.** Useful to know: pressing a button here will

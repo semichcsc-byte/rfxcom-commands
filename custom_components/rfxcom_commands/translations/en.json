@@ -1,4 +1,12 @@
 {
+  "selector": {
+    "kind": {
+      "options": {
+        "button": "Button - press it to send the command once",
+        "switch": "Switch - the remote's button toggles something on and off"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
@@ -33,14 +41,16 @@
         },
         "name": {
           "title": "Name the command",
-          "description": "Captured: {bits}\n\nThe button will be created as `{entity_id}`.\n\nTick Test to transmit it and check it does the right thing. Nothing is saved until you leave that box unticked.",
+          "description": "Captured: {bits}\n\nHeard {heard} times, which is what makes it trustworthy: a reading nobody could check against another may be missing a bit.\n\nThe entity will be created as `{entity_id}`.\n\nTick Test to transmit it and check it does the right thing. Nothing is saved until you leave that box unticked.",
           "data": {
             "name": "Name",
+            "kind": "Entity",
             "area_id": "Area",
             "repeats": "Repeats",
             "test": "Test before saving"
           },
           "data_description": {
+            "kind": "Pick Switch when the remote's button toggles something on and off. There is no feedback from the device, so the switch remembers what it last asked for.",
             "repeats": "How many times each transmission sends the command. Lower it only if you have a reason to; a weak link needs the full 10."
           }
         },
@@ -50,13 +60,15 @@
           "data": {
             "entity_id": "Entity",
             "name": "Name",
+            "kind": "Entity type",
             "area_id": "Area",
             "repeats": "Repeats",
             "test": "Test it now",
             "relearn": "Capture the command again"
           },
           "data_description": {
-            "entity_id": "The button this command drives. Read-only; select it to copy.",
+            "entity_id": "The entity this command drives. Read-only; select it to copy.",
+            "kind": "Changing this replaces the entity, so anything pointing at the old one needs updating.",
             "test": "Transmits the command straight away so you can check it still works. Nothing is saved while this is ticked."
           }
         },
