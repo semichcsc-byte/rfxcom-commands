@@ -50,8 +50,7 @@ async def test_capture_keeps_yielding_under_a_flood(
 ) -> None:
     monkeypatch.setattr(config_flow, "RawListener", FloodingListener)
     monkeypatch.setattr(config_flow, "LEARN_TIMEOUT", 0.5)
-    monkeypatch.setattr(config_flow, "QUIET_PERIOD", 999)  # never go quiet
-    monkeypatch.setattr(config_flow, "CONFIDENT_REPEATS", 10**9)  # never settle
+    monkeypatch.setattr(config_flow, "MIN_SIGHTINGS", 10**9)  # never settle
 
     ticks = 0
 

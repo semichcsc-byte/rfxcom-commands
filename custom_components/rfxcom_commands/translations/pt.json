@@ -30,7 +30,7 @@
       "step": {
         "user": {
           "title": "Aprender um comando",
-          "description": "Carrega em Enviar e depois carrega e mantém premido o botão do comando, um ou dois segundos, a poucos metros do RFXCOM.\n\nA escuta começa quando carregas em Enviar e pára ao fim de 20 segundos, ou assim que fechares esta janela."
+          "description": "Carrega em Enviar e depois carrega e mantém premido o botão do comando, um ou dois segundos, a poucos metros do RFXCOM.\n\nA escuta pára sozinha assim que ouvir o mesmo comando duas vezes, coisa que um botão mantido premido faz por si. Caso contrário desiste ao fim de 20 segundos, ou assim que fechares esta janela."
         },
         "select": {
           "title": "Escolhe o comando",
@@ -78,7 +78,7 @@
         }
       },
       "progress": {
-        "learn": "Carrega e mantém o botão do comando premido um ou dois segundos, a poucos metros do RFXCOM."
+        "learn": "Carrega e mantém o botão do comando premido um ou dois segundos, a poucos metros do RFXCOM. Isto fecha-se sozinho assim que ouvir o comando duas vezes."
       },
       "error": {
         "send_failed": "Não foi possível transmitir: {error}"

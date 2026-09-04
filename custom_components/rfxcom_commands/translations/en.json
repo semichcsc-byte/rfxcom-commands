@@ -30,7 +30,7 @@
       "step": {
         "user": {
           "title": "Learn a command",
-          "description": "Press Submit, then press and hold the button on your remote for a second or two, within a few metres of the RFXCOM.\n\nListening starts when you press Submit and stops after 20 seconds, or as soon as you close this dialog."
+          "description": "Press Submit, then press and hold the button on your remote for a second or two, within a few metres of the RFXCOM.\n\nListening stops by itself the moment the same command has been heard twice, which a held button manages on its own. Otherwise it gives up after 20 seconds, or as soon as you close this dialog."
         },
         "select": {
           "title": "Pick the command",
@@ -78,7 +78,7 @@
         }
       },
       "progress": {
-        "learn": "Press and hold the button on your remote for a second or two, within a few metres of the RFXCOM."
+        "learn": "Press and hold the button on your remote for a second or two, within a few metres of the RFXCOM. This closes itself once it has heard the command twice."
       },
       "error": {
         "send_failed": "Could not transmit: {error}"

@@ -57,7 +57,6 @@ class FakeListener:
 def quick_capture(monkeypatch):
     """Real timings would make every flow test wait out the capture window."""
     monkeypatch.setattr(config_flow, "LEARN_TIMEOUT", 2)
-    monkeypatch.setattr(config_flow, "QUIET_PERIOD", 0.05)
     monkeypatch.setattr(config_flow, "POLL_INTERVAL", 0.01)
 
 
@@ -208,6 +207,26 @@ async def test_a_command_heard_only_once_is_refused(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "failed"
     assert "only once" in result["description_placeholders"]["error"]
+
+
+async def test_listening_stops_as_soon_as_it_is_sure(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    """Waiting out the window after the answer arrived just looks broken."""
+    listeners: list[FakeListener] = []
+
+    def _listener(hass: HomeAssistant) -> FakeListener:
+        listeners.append(FakeListener(hass, packets=CAPTURE * 4))
+        return listeners[-1]
+
+    monkeypatch.setattr(config_flow, "RawListener", _listener)
+
+    entry = await setup_integration(hass)
+    result = await start_learning(hass, entry)
+
+    assert result["step_id"] == "name"
+    # Two bursts were enough; the rest were never read.
+    assert listeners[0]._packets
 
 
 async def test_naming_creates_a_button(

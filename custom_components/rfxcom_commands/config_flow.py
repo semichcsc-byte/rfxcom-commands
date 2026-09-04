@@ -30,7 +30,6 @@ from .const import (
     CONF_RELEARN,
     CONF_REPEATS,
     CONF_TEST,
-    CONFIDENT_REPEATS,
     DEFAULT_REPEATS,
     DOMAIN,
     KIND_BUTTON,
@@ -41,7 +40,6 @@ from .const import (
     MIN_REPEATS,
     MIN_SIGHTINGS,
     POLL_INTERVAL,
-    QUIET_PERIOD,
     SUBENTRY_TYPE_COMMAND,
 )
 from .gateway import GatewayError, RawListener, async_send, find_entry
@@ -270,7 +268,6 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             seen = 0
             found: dict[str, Command] = {}
             repeats: dict[str, int] = {}
-            last_heard = 0.0
 
             while time.monotonic() < deadline:
                 # Yield unconditionally. Awaiting a queue that already has an
@@ -281,13 +278,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
 
                 packet = await listener.next_packet(timeout=POLL_INTERVAL)
                 if packet is None:
-                    quiet = time.monotonic() - last_heard > QUIET_PERIOD
-                    if quiet and any(
-                        count >= MIN_SIGHTINGS for count in repeats.values()
-                    ):
-                        break  # button released, and we heard it more than once
                     continue
-                last_heard = time.monotonic()
 
                 seen += 1
                 if seen > MAX_PACKETS_PER_CAPTURE:
@@ -315,8 +306,8 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
 
                 repeats[command.bits] = repeats.get(command.bits, 0) + 1
                 found.setdefault(command.bits, command)
-                if repeats[command.bits] >= CONFIDENT_REPEATS:
-                    break  # heard the same thing enough times to be sure
+                if repeats[command.bits] >= MIN_SIGHTINGS:
+                    break  # heard the same bits twice, so stop straight away
 
             # Kept so the picker can show how often each one was heard.
             self._sightings = repeats
