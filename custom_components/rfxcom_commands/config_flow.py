@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import time
 from typing import Any
@@ -103,19 +102,18 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
     def _entry(self) -> ConfigEntry:
         return self._get_entry()
 
-    async def async_remove(self) -> None:
+    @callback
+    def async_remove(self) -> None:
         """Stop listening as soon as the dialog closes.
 
-        Without this the capture would hold the RFXCOM in raw mode until its
-        timeout, long after the user gave up on it.
+        Home Assistant calls this synchronously, so the task can only be
+        cancelled, not awaited. That is enough: the listener restores the
+        receiver from its own cleanup, which is shielded against the
+        cancellation.
         """
         task, self._task = self._task, None
         if task is not None and not task.done():
             task.cancel()
-            # Any failure here belongs to a capture the user has walked away
-            # from; re-raising it would only muddy the log.
-            with contextlib.suppress(Exception):
-                await task
 
     # --- entry points ----------------------------------------------------
 

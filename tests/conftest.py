@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import pytest
 
+# Not auto-loaded: without this the harness's own fixtures never register and
+# every test errors in teardown.
 pytest_plugins = "pytest_homeassistant_custom_component"
 
 

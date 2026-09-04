@@ -1,3 +1,8 @@
 # Brings in a matching Home Assistant, so the flow tests run against the same
 # version the integration targets.
 pytest-homeassistant-custom-component==0.13.363
+
+# The gateway imports this directly. In a running Home Assistant the core
+# RFXCOM integration has already installed it, which is why the manifest does
+# not declare it, but the tests get no such favour.
+pyRFXtrx

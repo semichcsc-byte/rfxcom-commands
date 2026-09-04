@@ -230,3 +230,30 @@ async def test_repeats_are_baked_into_the_saved_command(
         result["flow_id"], {"name": "Fan light", CONF_REPEATS: 3, CONF_TEST: False}
     )
     assert bytes.fromhex(result["data"][CONF_EVENTS][0])[4] == 3
+
+
+async def test_closing_the_dialog_stops_the_capture(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    """Home Assistant calls async_remove synchronously, so it cannot be async."""
+    entry = await setup_integration(hass)
+
+    # A listener that never produces anything, so the capture is still running.
+    monkeypatch.setattr(
+        config_flow, "RawListener", lambda hass: FakeListener(hass, packets=[])
+    )
+    monkeypatch.setattr(config_flow, "LEARN_TIMEOUT", 30)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, "command"), context={"source": "user"}
+    )
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], {})
+    assert result["type"] is FlowResultType.SHOW_PROGRESS
+
+    flow = hass.config_entries.subentries._progress[result["flow_id"]]
+    assert flow._task is not None and not flow._task.done()
+
+    hass.config_entries.subentries.async_abort(result["flow_id"])
+    await asyncio.sleep(0)
+
+    assert flow._task is None or flow._task.cancelled()
