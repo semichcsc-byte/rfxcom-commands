@@ -1,4 +1,16 @@
 {
+  "services": {
+    "watch": {
+      "name": "Watch the airwaves",
+      "description": "Listens in raw mode and reports every command it hears, whether or not the RFXCOM can normally decode it. Each one also fires an rfxcom_commands_raw event as it arrives, so it can be watched live under Developer tools, Events. The RFXCOM decodes nothing else while this runs.",
+      "fields": {
+        "seconds": {
+          "name": "Listen for",
+          "description": "How long to keep listening."
+        }
+      }
+    }
+  },
   "selector": {
     "kind": {
       "options": {

@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fixtures import CAPTURE, EXPECTED_BITS  # noqa: E402
 
 from custom_components import rfxcom_commands  # noqa: E402
+from custom_components.rfxcom_commands import capture as capture_module  # noqa: E402
 from custom_components.rfxcom_commands import config_flow  # noqa: E402
 from custom_components.rfxcom_commands.const import (  # noqa: E402
     CONF_EVENTS,
@@ -66,7 +67,7 @@ class FakeListener:
 def quick_capture(monkeypatch):
     """Real timings would make every flow test wait out the capture window."""
     monkeypatch.setattr(config_flow, "LEARN_TIMEOUT", 2)
-    monkeypatch.setattr(config_flow, "POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(capture_module, "POLL_INTERVAL", 0.01)
 
 
 @pytest.fixture

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from typing import Any
 
 import voluptuous as vol
@@ -21,6 +20,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er, selector
 from homeassistant.util import slugify
 
+from .capture import Capture
 from .const import (
     CONF_AREA_ID,
     CONF_BITS,
@@ -35,20 +35,10 @@ from .const import (
     KIND_BUTTON,
     KIND_SWITCH,
     LEARN_TIMEOUT,
-    MAX_PACKETS_PER_CAPTURE,
-    MIN_FRAMES,
-    POLL_INTERVAL,
     SUBENTRY_TYPE_COMMAND,
 )
 from .gateway import GatewayError, RawListener, async_send, find_entry
-from .rawrf import (
-    MAX_PACKETS,
-    Command,
-    RawRFError,
-    build_packets,
-    decode,
-    is_last_packet,
-)
+from .rawrf import Command, RawRFError, build_packets
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -230,75 +220,19 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         return self.async_show_progress_done(next_step_id="name")
 
     async def _capture(self) -> Command | None:
-        """Wait for one transmission that corroborates itself.
-
-        Bursts are assembled strictly by packet index. A burst can never hold
-        more than four packets, so anything that does not fit that shape is a
-        lost or interleaved packet and the partial burst is dropped. Raw mode
-        reports every RF transmission in earshot, so this loop has to stay
-        bounded no matter how much traffic arrives.
-        """
+        """Wait for one transmission that corroborates itself."""
         async with RawListener(self.hass) as listener:
-            deadline = time.monotonic() + LEARN_TIMEOUT
-            burst: list[bytes] = []
-            seen = 0
-            last_decode_error: str | None = None
-
-            while time.monotonic() < deadline:
-                # Yield unconditionally. Awaiting a queue that already has an
-                # item does not reach the event loop, so a fast enough stream
-                # of packets would otherwise let this loop starve Home
-                # Assistant for the whole capture window.
-                await asyncio.sleep(0)
-
-                packet = await listener.next_packet(timeout=POLL_INTERVAL)
-                if packet is None:
-                    continue
-
-                seen += 1
-                if seen > MAX_PACKETS_PER_CAPTURE:
-                    break  # too busy to keep listening; give up
-
-                index = packet[2]
-                _LOGGER.debug(
-                    "raw packet #%d: index=%d seq=%d last=%s pulses=%d",
-                    seen, index, packet[3], bool(packet[4]), (len(packet) - 5) // 2,
-                )
-                if index == 0:
-                    if burst:
-                        _LOGGER.debug("  a new burst started before %d finished",
-                                      len(burst))
-                    burst = [packet]
-                elif burst and index == len(burst) and len(burst) < MAX_PACKETS:
-                    burst.append(packet)
-                else:
-                    # Out of order: another transmission cut across this one.
-                    _LOGGER.debug(
-                        "  out of order: expected index %d, dropping the burst",
-                        len(burst),
-                    )
-                    burst = []
-                    continue
-
-                if not is_last_packet(packet):
-                    continue
-
-                try:
-                    command = decode(burst, min_frames=MIN_FRAMES)
-                except RawRFError as err:
-                    _LOGGER.debug("  burst of %d packet(s) rejected: %s",
-                                  len(burst), err)
-                    last_decode_error = str(err)
-                    burst = []
-                    continue
-                _LOGGER.debug("  accepted: %s", command.bits)
+            capture = Capture(listener)
+            async for command in capture.commands(LEARN_TIMEOUT):
                 return command
 
             _LOGGER.debug(
                 "Capture over: %d packets from the receiver, %d of them raw",
                 listener.packets_seen, listener.raw_seen,
             )
-            self._error = _explain_failure(listener, decode_error=last_decode_error)
+            self._error = _explain_failure(
+                listener, decode_error=capture.last_decode_error
+            )
             return None
 
     async def async_step_failed(

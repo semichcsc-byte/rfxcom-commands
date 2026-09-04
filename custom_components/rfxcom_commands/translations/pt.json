@@ -1,4 +1,16 @@
 {
+  "services": {
+    "watch": {
+      "name": "Ver o que anda no ar",
+      "description": "Põe o RFXCOM à escuta em modo raw e mostra todos os comandos que ouvir, mesmo os que ele normalmente não sabe descodificar. Cada um dispara também um evento rfxcom_commands_raw à medida que chega, para o veres ao vivo em Ferramentas de programador, Eventos. Enquanto isto corre o RFXCOM não descodifica mais nada.",
+      "fields": {
+        "seconds": {
+          "name": "Escutar durante",
+          "description": "Quanto tempo fica à escuta."
+        }
+      }
+    }
+  },
   "selector": {
     "kind": {
       "options": {

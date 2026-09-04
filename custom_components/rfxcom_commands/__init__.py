@@ -12,6 +12,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import CONF_KIND, DOMAIN, KIND_BUTTON
 from .gateway import GatewayError, async_send, find_entry
+from .services import async_setup_services, async_unload_services
 
 PLATFORMS = [Platform.BUTTON, Platform.SWITCH]
 
@@ -56,6 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: RFXCOMConfigEntry) -> bo
     _prune_stale_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
+    async_setup_services(hass)
     return True
 
 
@@ -78,6 +80,7 @@ def _prune_stale_entities(hass: HomeAssistant, entry: RFXCOMConfigEntry) -> None
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: RFXCOMConfigEntry) -> bool:
+    async_unload_services(hass)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 

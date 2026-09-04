@@ -116,6 +116,21 @@ drifts out of step — someone used the physical remote, or a transmission was
 lost — press it again. It always transmits, even when the state already looks
 right, because that is the only way back.
 
+## Watch the airwaves
+
+The **RFXCOM Commands: watch the airwaves** action listens in raw mode and
+reports every command it hears, decodable or not, with the bits, the pulse
+timings and how many times each one arrived.
+
+Each one also fires an `rfxcom_commands_raw` event as it happens, so you can
+watch them live under **Developer tools → Events**. Run the action from
+**Developer tools → Actions** in another tab and press buttons on your remote.
+
+This is the quickest way to find out whether a remote is being heard at all,
+whether two buttons really send different codes, and whether something else
+nearby is transmitting on top of you. The RFXCOM decodes nothing else while it
+runs, so it stops on its own.
+
 ## Repeats
 
 Every command is sent at the firmware maximum of ten repeats, and this is not

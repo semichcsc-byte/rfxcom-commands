@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from fixtures import CAPTURE  # noqa: E402
 
+from custom_components.rfxcom_commands import capture as capture_module  # noqa: E402
 from custom_components.rfxcom_commands import config_flow  # noqa: E402
 from custom_components.rfxcom_commands.config_flow import (  # noqa: E402
     CommandSubentryFlowHandler,
@@ -52,7 +53,7 @@ async def test_capture_keeps_yielding_under_a_flood(
 ) -> None:
     monkeypatch.setattr(config_flow, "RawListener", FloodingListener)
     monkeypatch.setattr(config_flow, "LEARN_TIMEOUT", 0.5)
-    monkeypatch.setattr(config_flow, "MIN_FRAMES", 10**9)  # never settle
+    monkeypatch.setattr(capture_module, "MIN_FRAMES", 10**9)  # never settle
 
     ticks = 0
 

@@ -23,6 +23,15 @@ KIND_SWITCH = "switch"
 
 SUBENTRY_TYPE_COMMAND = "command"
 
+SERVICE_WATCH = "watch"
+ATTR_SECONDS = "seconds"
+EVENT_RAW_COMMAND = "rfxcom_commands_raw"
+
+# Long enough to press a few buttons, short enough that the core integration is
+# not left deaf for long: raw mode stops it decoding anything.
+DEFAULT_WATCH_SECONDS = 30
+MAX_WATCH_SECONDS = 120
+
 # The firmware caps repeats at 10. Anything lower has been seen to drop
 # commands on remotes whose carrier sits slightly off 433.92 MHz, and a repeat
 # costs only a few milliseconds, so there is no reason to default lower.

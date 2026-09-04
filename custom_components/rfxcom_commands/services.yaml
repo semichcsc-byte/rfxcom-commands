@@ -1,0 +1,11 @@
+watch:
+  fields:
+    seconds:
+      required: false
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 120
+          unit_of_measurement: seconds
+          mode: box
