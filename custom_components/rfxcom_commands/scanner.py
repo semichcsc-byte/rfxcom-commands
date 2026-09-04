@@ -80,13 +80,13 @@ class Scanner:
                 async for command in capture.commands(MAX_SCAN_SECONDS):
                     self.last = {
                         "bits": command.bits,
-                        "frames": command.frames_seen,
+                        "repeats": command.frames_seen,
                         "short_us": command.short,
                         "long_us": command.long,
                         "gap_us": command.gap,
                         "pulses": len(command.pulses),
                     }
-                    self._remember(command.bits)
+                    self._remember(command.bits, command.frames_seen)
                     self.packets = listener.packets_seen
                     self.raw_packets = listener.raw_seen
                     self.bursts_dropped = capture.bursts_dropped
@@ -105,12 +105,13 @@ class Scanner:
             self._task = None
             self._notify()
 
-    def _remember(self, bits: str) -> None:
+    def _remember(self, bits: str, repeats: int) -> None:
         for seen in self.recent:
             if seen["bits"] == bits:
-                seen["times"] += 1
+                seen["heard"] += 1
+                seen["repeats"] = repeats
                 self.recent.remove(seen)
                 self.recent.insert(0, seen)
                 return
-        self.recent.insert(0, {"bits": bits, "times": 1})
+        self.recent.insert(0, {"bits": bits, "heard": 1, "repeats": repeats})
         del self.recent[RECENT_CODES:]

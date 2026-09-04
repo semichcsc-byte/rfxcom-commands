@@ -271,7 +271,7 @@ async def test_naming_creates_a_button(
     assert len(events) == 1
     packet = bytes.fromhex(events[0])
     assert packet[1] == 0x7F  # raw transmit
-    assert packet[4] == 10  # repeats
+    assert packet[4] == 4  # as many repeats as the remote sent
 
     await hass.async_block_till_done()
     assert hass.states.get("button.rfxcom_commands_fan_light") is not None
@@ -292,14 +292,14 @@ async def test_testing_transmits_without_saving(
     assert len(entry.subentries) == 0
 
     assert len(no_transmit) == 1
-    assert bytes.fromhex(no_transmit[0][0])[4] == 10
+    assert bytes.fromhex(no_transmit[0][0])[4] == 4
 
 
-async def test_the_command_always_goes_out_at_full_strength(
+async def test_the_command_is_replayed_as_the_remote_sent_it(
     hass: HomeAssistant, rfxtrx, captures
 ) -> None:
-    """Nobody has a reason to send fewer, and a second send reads as a second
-    press, which cancels itself out on a toggle."""
+    """A receiver that counts presses reads a longer burst as several, which on
+    a toggle undoes itself, so the only safe length is the remote's own."""
     entry = await setup_integration(hass)
     result = await start_learning(hass, entry)
 
@@ -307,7 +307,7 @@ async def test_the_command_always_goes_out_at_full_strength(
         result["flow_id"], {"name": "Fan light", CONF_TEST: False}
     )
     assert len(result["data"][CONF_EVENTS]) == 1
-    assert bytes.fromhex(result["data"][CONF_EVENTS][0])[4] == 10
+    assert bytes.fromhex(result["data"][CONF_EVENTS][0])[4] == 4
 
 
 async def test_a_toggle_button_becomes_a_switch(
@@ -378,7 +378,7 @@ async def test_editing_names_the_entity_and_can_fire_it(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "reconfigure"
     assert len(no_transmit) == 1
-    assert bytes.fromhex(no_transmit[0][0])[4] == 10
+    assert bytes.fromhex(no_transmit[0][0])[4] == 4
 
 
 async def test_closing_the_dialog_stops_the_capture(

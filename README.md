@@ -123,9 +123,9 @@ every command the RFXCOM hears appears there the moment it arrives, decodable
 by the RFXCOM or not. Press buttons on your remote and read them off.
 
 The sensor's state is the last code's bits. Its attributes carry that code's
-pulse timings, the last ten distinct codes with how many times each arrived,
-and how many bursts were cut short by another transmission — which is how you
-tell a quiet band from a crowded one.
+repeat count and pulse timings, the last ten distinct codes with how many times
+each arrived, and how many bursts were cut short by another transmission —
+which is how you tell a quiet band from a crowded one.
 
 Put it on a dashboard, or use `rfxcom_commands_raw` as an automation trigger:
 one is fired per command as it is decoded.
@@ -137,12 +137,17 @@ thing for a fixed window and hands back a written summary, and the
 
 ## Repeats
 
-Every command is sent at the firmware maximum of ten repeats, and this is not
-configurable. A lower count only makes a marginal link worse.
+A remote does not send its code once: it sends the same frame several times in
+a row, and the count is part of what it sends. A command is replayed exactly
+that many times, and there is nothing to configure.
 
-Sending the command twice to be safe is worse still, and not for the obvious
-reason: the ten repeats are a burst, which a receiver treats as one press, but
-a second transmission is a *second press*. On a toggle that undoes the first.
+Sending more is not "stronger". A receiver that counts presses rather than
+coalescing a burst reads a longer burst as several presses, and on a toggle
+that undoes itself. The only burst length known to work with a given remote is
+the one that remote uses.
+
+The scanner shows the count for every code it hears, so you can see what your
+own remote does.
 
 ### What happens behind the scenes
 
@@ -173,8 +178,8 @@ remote is 315 MHz or 868 MHz, an RFXtrx433 will never hear it.
 **The button works sometimes.** This is the common one. The RFXtrx transmits on
 433.92 MHz and many remotes sit slightly off that — 433.83 is typical. Cheap
 receivers have a narrow enough filter that the difference matters, and you get
-an intermittent link. Repeats are already at the maximum, so the fix is
-physical: move the RFXCOM closer to the device, or reorient its antenna.
+an intermittent link. The fix is physical: move the RFXCOM closer to the
+device, or reorient its antenna.
 **The button does nothing at all.** Learn it again. If a second capture
 produces the same bits and still does nothing, the remote is probably using
 rolling codes, which cannot be replayed by anyone.

@@ -263,7 +263,9 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                         packet.hex()
                         for packet in build_packets(
                             list(subentry.data[CONF_PULSES]),
-                            repeats=DEFAULT_REPEATS,
+                            repeats=subentry.data.get(
+                                CONF_REPEATS, DEFAULT_REPEATS
+                            ),
                         )
                     ],
                 )
@@ -285,8 +287,12 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             return await self.async_step_learn()
 
         # Keep the captured pulses; only the presentation changed.
-        return self._save(user_input, pulses=list(subentry.data[CONF_PULSES]),
-                          bits=subentry.data.get(CONF_BITS, ""))
+        return self._save(
+            user_input,
+            pulses=list(subentry.data[CONF_PULSES]),
+            bits=subentry.data.get(CONF_BITS, ""),
+            repeats=subentry.data.get(CONF_REPEATS, DEFAULT_REPEATS),
+        )
 
     # --- learning --------------------------------------------------------
 
@@ -364,10 +370,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         if user_input.get(CONF_TEST):
             assert self._command is not None
             try:
-                await async_send(
-                    self.hass,
-                    self._command.events(repeats=DEFAULT_REPEATS),
-                )
+                await async_send(self.hass, self._command.events())
             except Exception as err:  # noqa: BLE001 - report and let them retry
                 return self._show_details(
                     step_id="name", user_input=user_input, errors={"base": "send_failed"},
@@ -380,6 +383,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             user_input,
             pulses=list(self._command.pulses),
             bits=self._command.bits,
+            repeats=self._command.repeats,
         )
 
     def _show_details(
@@ -442,17 +446,17 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         return registry.async_generate_entity_id(kind, f"{self._entry.title} {name}")
 
     def _save(
-        self, user_input: dict[str, Any], *, pulses: list[int], bits: str
+        self, user_input: dict[str, Any], *, pulses: list[int], bits: str, repeats: int
     ) -> SubentryFlowResult:
-        # Always the firmware maximum. A lower count only makes a marginal link
-        # worse, and sending the command a second time to compensate would read
-        # as a second press -- which cancels itself out on a toggle.
+        # As many repeats as the remote itself sends, no more: a receiver that
+        # counts presses reads a longer burst as several, which on a toggle
+        # undoes itself.
         data = {
             CONF_PULSES: pulses,
             CONF_EVENTS: [
-                p.hex() for p in build_packets(pulses, repeats=DEFAULT_REPEATS)
+                p.hex() for p in build_packets(pulses, repeats=repeats)
             ],
-            CONF_REPEATS: DEFAULT_REPEATS,
+            CONF_REPEATS: repeats,
             CONF_BITS: bits,
             CONF_KIND: user_input.get(CONF_KIND, KIND_BUTTON),
             CONF_AREA_ID: user_input.get(CONF_AREA_ID),

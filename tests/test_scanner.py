@@ -67,7 +67,9 @@ async def test_the_scanner_publishes_codes_as_they_arrive(
 
     state = hass.states.get(LAST_CODE)
     assert state.state == EXPECTED_BITS
-    assert state.attributes["recent"] == [{"bits": EXPECTED_BITS, "times": 2}]
+    assert state.attributes["recent"] == [
+        {"bits": EXPECTED_BITS, "heard": 2, "repeats": 4}
+    ]
     assert state.attributes["raw_packets"] == 4
 
     # The window closed on its own, so the receiver is not left deaf.

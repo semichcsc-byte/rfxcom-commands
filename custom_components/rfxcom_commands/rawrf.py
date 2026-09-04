@@ -21,6 +21,9 @@ from statistics import median
 
 PACKET_TYPE_RAW = 0x7F
 
+# The firmware caps a burst at ten repeats.
+MAX_REPEATS = 10
+
 # Limits imposed by the RFXtrx firmware.
 MAX_PULSES_PER_PACKET = 124
 MAX_PACKETS = 4
@@ -51,13 +54,23 @@ class Command:
     gap: int
     frames_seen: int
 
-    def packets(self, repeats: int = 10, seq: int = 0) -> list[bytes]:
+    def packets(self, repeats: int | None = None, seq: int = 0) -> list[bytes]:
         """Build the packets that replay this command."""
-        return build_packets(self.pulses, repeats=repeats, seq=seq)
+        return build_packets(self.pulses, repeats=repeats or self.repeats, seq=seq)
 
-    def events(self, repeats: int = 10, seq: int = 0) -> list[str]:
+    def events(self, repeats: int | None = None, seq: int = 0) -> list[str]:
         """Same, as hex strings for the `rfxtrx.send` action."""
         return [p.hex() for p in self.packets(repeats=repeats, seq=seq)]
+
+    @property
+    def repeats(self) -> int:
+        """How many times to send it: as many as the remote itself sent.
+
+        A receiver that counts presses rather than coalescing a burst will see
+        a longer burst as several presses, which on a toggle undoes itself. The
+        only length known to work is the one the remote uses.
+        """
+        return min(max(self.frames_seen, 1), MAX_REPEATS)
 
 
 def is_raw_packet(packet: bytes) -> bool:

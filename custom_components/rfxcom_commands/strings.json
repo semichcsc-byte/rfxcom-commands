@@ -70,7 +70,7 @@
         },
         "name": {
           "title": "Name the command",
-          "description": "Captured: {bits}\n\nRead {frames} times in the one transmission, all agreeing.\n\nThe entity will be created as `{entity_id}`.\n\nTick Test to transmit it and check it does the right thing. Nothing is saved until you leave that box unticked.",
+          "description": "Captured: {bits}\n\nYour remote sent it {frames} times over, all agreeing, and it will be replayed exactly that many times.\n\nThe entity will be created as `{entity_id}`.\n\nTick Test to transmit it and check it does the right thing. Nothing is saved until you leave that box unticked.",
           "data": {
             "name": "Name",
             "kind": "Entity",
