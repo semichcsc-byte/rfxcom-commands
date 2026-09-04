@@ -260,12 +260,23 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                     break  # too busy to keep listening; give up
 
                 index = packet[2]
+                _LOGGER.debug(
+                    "raw packet #%d: index=%d seq=%d last=%s pulses=%d",
+                    seen, index, packet[3], bool(packet[4]), (len(packet) - 5) // 2,
+                )
                 if index == 0:
+                    if burst:
+                        _LOGGER.debug("  a new burst started before %d finished",
+                                      len(burst))
                     burst = [packet]
                 elif burst and index == len(burst) and len(burst) < MAX_PACKETS:
                     burst.append(packet)
                 else:
                     # Out of order: another transmission cut across this one.
+                    _LOGGER.debug(
+                        "  out of order: expected index %d, dropping the burst",
+                        len(burst),
+                    )
                     burst = []
                     continue
 
@@ -275,11 +286,18 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                 try:
                     command = decode(burst, min_frames=MIN_FRAMES)
                 except RawRFError as err:
+                    _LOGGER.debug("  burst of %d packet(s) rejected: %s",
+                                  len(burst), err)
                     last_decode_error = str(err)
                     burst = []
                     continue
+                _LOGGER.debug("  accepted: %s", command.bits)
                 return command
 
+            _LOGGER.debug(
+                "Capture over: %d packets from the receiver, %d of them raw",
+                listener.packets_seen, listener.raw_seen,
+            )
             self._error = _explain_failure(listener, decode_error=last_decode_error)
             return None
 
