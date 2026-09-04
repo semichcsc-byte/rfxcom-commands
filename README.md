@@ -138,6 +138,23 @@ python3 tools/rfx_capture.py --log home-assistant.log
 python3 tools/rfx_capture.py --port /dev/ttyUSB0 --seconds 30
 ```
 
+It prints what RFXmngr prints — the packet type and the **HA code** for every
+decoded packet, ready to paste into the RFXCOM integration's `event_code`
+field — and additionally reassembles raw packets into a replayable command.
+
+Install `pyRFXtrx` alongside it (`pip install pyRFXtrx`) and it also breaks each
+packet down field by field, as RFXmngr's log pane does. Without it you still get
+the packet type and the HA code.
+
+That second part is the reason this project exists. RFXCOM's own workflow is to
+read the HA code out of RFXmngr and paste it into Home Assistant, which works
+well for a remote the firmware decodes. For one it does not, all you get is an
+`Undecoded` packet carrying a couple of bytes, and those bytes are not stable:
+one button pressed several times produced four different codes in testing,
+while a second button on the same remote produced one of the same ones. There
+is nothing there to build an entity on. The raw pulse train is the only thing
+that identifies the button.
+
 ## Licence
 
 MIT
