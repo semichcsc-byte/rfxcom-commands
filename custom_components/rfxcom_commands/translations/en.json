@@ -39,12 +39,10 @@
             "name": "Name",
             "kind": "Entity",
             "area_id": "Area",
-            "repeats": "Repeats",
             "test": "Test before saving"
           },
           "data_description": {
-            "kind": "Pick Switch when the remote's button toggles something on and off. There is no feedback from the device, so the switch remembers what it last asked for.",
-            "repeats": "How many times each transmission sends the command. Lower it only if you have a reason to; a weak link needs the full 10."
+            "kind": "Pick Switch when the remote's button toggles something on and off. There is no feedback from the device, so the switch remembers what it last asked for."
           }
         },
         "reconfigure": {
@@ -55,7 +53,6 @@
             "name": "Name",
             "kind": "Entity type",
             "area_id": "Area",
-            "repeats": "Repeats",
             "test": "Test it now",
             "relearn": "Capture the command again"
           },

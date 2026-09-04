@@ -66,21 +66,19 @@ class RFXCOMCommandSwitch(SwitchEntity, RestoreEntity):
             registry.async_update_entity(self.entity_id, area_id=self._area_id)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self._toggle(True)
+        await self._press(True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self._toggle(False)
+        await self._press(False)
 
-    async def _toggle(self, target: bool) -> None:
+    async def _press(self, target: bool) -> None:
         """Send the one code the remote has, then assume it worked.
 
-        The remote's button is a toggle, so pressing it when the light already
-        matches would turn it the wrong way. Doing nothing is the honest
-        response: the state here is only ever a guess, and the user can correct
-        it by pressing again.
+        Always sends, even when the state already matches. With no feedback the
+        two buttons are requests, not a target state, and asking again is the
+        only way back when a transmission was lost -- refusing would leave the
+        switch and the light disagreeing with no way to correct it.
         """
-        if self._attr_is_on == target:
-            return
         try:
             await self._runtime.send(self._events)
         except GatewayError as err:

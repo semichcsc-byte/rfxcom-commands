@@ -36,9 +36,7 @@ from .const import (
     KIND_SWITCH,
     LEARN_TIMEOUT,
     MAX_PACKETS_PER_CAPTURE,
-    MAX_REPEATS,
     MIN_FRAMES,
-    MIN_REPEATS,
     POLL_INTERVAL,
     SUBENTRY_TYPE_COMMAND,
 )
@@ -53,12 +51,6 @@ from .rawrf import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-REPEATS = selector.NumberSelector(
-    selector.NumberSelectorConfig(
-        min=MIN_REPEATS, max=MAX_REPEATS, step=1, mode=selector.NumberSelectorMode.BOX
-    )
-)
 
 KIND = selector.SelectSelector(
     selector.SelectSelectorConfig(
@@ -170,7 +162,6 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             "name": subentry.title,
             CONF_KIND: subentry.data.get(CONF_KIND, KIND_BUTTON),
             CONF_AREA_ID: subentry.data.get(CONF_AREA_ID),
-            CONF_REPEATS: subentry.data.get(CONF_REPEATS, DEFAULT_REPEATS),
         }
 
         if user_input is None:
@@ -184,7 +175,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                         packet.hex()
                         for packet in build_packets(
                             list(subentry.data[CONF_PULSES]),
-                            repeats=int(user_input[CONF_REPEATS]),
+                            repeats=DEFAULT_REPEATS,
                         )
                     ],
                 )
@@ -202,7 +193,6 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                 "name": user_input["name"],
                 CONF_KIND: user_input.get(CONF_KIND, KIND_BUTTON),
                 CONF_AREA_ID: user_input.get(CONF_AREA_ID),
-                CONF_REPEATS: int(user_input[CONF_REPEATS]),
             }
             return await self.async_step_learn()
 
@@ -326,7 +316,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             try:
                 await async_send(
                     self.hass,
-                    self._command.events(repeats=int(user_input[CONF_REPEATS])),
+                    self._command.events(repeats=DEFAULT_REPEATS),
                 )
             except Exception as err:  # noqa: BLE001 - report and let them retry
                 return self._show_details(
@@ -365,9 +355,6 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             vol.Optional(
                 CONF_AREA_ID, description={"suggested_value": current.get(CONF_AREA_ID)}
             ): selector.AreaSelector(),
-            vol.Optional(
-                CONF_REPEATS, default=current.get(CONF_REPEATS, DEFAULT_REPEATS)
-            ): REPEATS,
         }
         fields[vol.Optional(CONF_TEST, default=False)] = bool
         if step_id == "reconfigure":
@@ -407,11 +394,15 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
     def _save(
         self, user_input: dict[str, Any], *, pulses: list[int], bits: str
     ) -> SubentryFlowResult:
-        repeats = int(user_input[CONF_REPEATS])
+        # Always the firmware maximum. A lower count only makes a marginal link
+        # worse, and sending the command a second time to compensate would read
+        # as a second press -- which cancels itself out on a toggle.
         data = {
             CONF_PULSES: pulses,
-            CONF_EVENTS: [p.hex() for p in build_packets(pulses, repeats=repeats)],
-            CONF_REPEATS: repeats,
+            CONF_EVENTS: [
+                p.hex() for p in build_packets(pulses, repeats=DEFAULT_REPEATS)
+            ],
+            CONF_REPEATS: DEFAULT_REPEATS,
             CONF_BITS: bits,
             CONF_KIND: user_input.get(CONF_KIND, KIND_BUTTON),
             CONF_AREA_ID: user_input.get(CONF_AREA_ID),

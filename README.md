@@ -109,12 +109,21 @@ Pick **button** when the remote's button does one thing: a doorbell, a scene,
 "fan up".
 
 Pick **switch** when the remote's button toggles something on and off, which is
-what most ceiling fan lights do. There is only one code, so the switch sends it
-when the state needs to change and does nothing when it already matches. It has
-no way to know what actually happened, so it is marked as assumed state and
-shows what it last asked for. If it drifts out of step — someone used the
-physical remote, or a transmission was lost — press it again to line it back
-up.
+what most ceiling fan lights do. There is only one code, so both buttons send
+the same thing; the switch just remembers which way it last asked for. It has
+no way to know what actually happened, so it is marked as assumed state. If it
+drifts out of step — someone used the physical remote, or a transmission was
+lost — press it again. It always transmits, even when the state already looks
+right, because that is the only way back.
+
+## Repeats
+
+Every command is sent at the firmware maximum of ten repeats, and this is not
+configurable. A lower count only makes a marginal link worse.
+
+Sending the command twice to be safe is worse still, and not for the obvious
+reason: the ten repeats are a burst, which a receiver treats as one press, but
+a second transmission is a *second press*. On a toggle that undoes the first.
 
 ### What happens behind the scenes
 
@@ -136,9 +145,6 @@ automations and scripts carry on working. Changing it between a button and a
 switch does replace the entity. Tick **Capture the command again** to recapture
 and keep everything else, or **Test it now** to fire it and see what happens.
 
-**Repeats** is how many times each press transmits the command, 1 to 10. Leave
-it at 10 unless you have a reason not to. See below.
-
 ## If something does not work
 
 **Nothing gets captured.** Hold the remote closer, within a metre or so, and
@@ -150,7 +156,6 @@ remote is 315 MHz or 868 MHz, an RFXtrx433 will never hear it.
 receivers have a narrow enough filter that the difference matters, and you get
 an intermittent link. Repeats are already at the maximum, so the fix is
 physical: move the RFXCOM closer to the device, or reorient its antenna.
-
 **The button does nothing at all.** Learn it again. If a second capture
 produces the same bits and still does nothing, the remote is probably using
 rolling codes, which cannot be replayed by anyone.

@@ -39,12 +39,10 @@
             "name": "Nome",
             "kind": "Entidade",
             "area_id": "Área",
-            "repeats": "Repetições",
             "test": "Testar antes de guardar"
           },
           "data_description": {
-            "kind": "Escolhe Interruptor quando o botão do comando liga e desliga a mesma coisa. O aparelho não dá resposta nenhuma, por isso o interruptor guarda apenas o que pediu da última vez.",
-            "repeats": "Quantas vezes cada transmissão envia o comando. Só baixa isto se tiveres motivo; uma ligação fraca precisa das 10."
+            "kind": "Escolhe Interruptor quando o botão do comando liga e desliga a mesma coisa. O aparelho não dá resposta nenhuma, por isso o interruptor guarda apenas o que pediu da última vez."
           }
         },
         "reconfigure": {
@@ -55,7 +53,6 @@
             "name": "Nome",
             "kind": "Tipo de entidade",
             "area_id": "Área",
-            "repeats": "Repetições",
             "test": "Testar agora",
             "relearn": "Capturar o comando outra vez"
           },

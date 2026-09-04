@@ -26,7 +26,6 @@ from custom_components.rfxcom_commands import config_flow  # noqa: E402
 from custom_components.rfxcom_commands.const import (  # noqa: E402
     CONF_EVENTS,
     CONF_KIND,
-    CONF_REPEATS,
     CONF_TEST,
     DOMAIN,
     KIND_SWITCH,
@@ -262,7 +261,7 @@ async def test_naming_creates_a_button(
     result = await start_learning(hass, entry)
 
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"name": "Fan light", CONF_REPEATS: 10, CONF_TEST: False}
+        result["flow_id"], {"name": "Fan light", CONF_TEST: False}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Fan light"
@@ -284,7 +283,7 @@ async def test_testing_transmits_without_saving(
     result = await start_learning(hass, entry)
 
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"name": "Fan light", CONF_REPEATS: 4, CONF_TEST: True}
+        result["flow_id"], {"name": "Fan light", CONF_TEST: True}
     )
     # Back on the form, nothing saved yet.
     assert result["type"] is FlowResultType.FORM
@@ -292,19 +291,22 @@ async def test_testing_transmits_without_saving(
     assert len(entry.subentries) == 0
 
     assert len(no_transmit) == 1
-    assert bytes.fromhex(no_transmit[0][0])[4] == 4  # honoured the repeat count
+    assert bytes.fromhex(no_transmit[0][0])[4] == 10
 
 
-async def test_repeats_are_baked_into_the_saved_command(
+async def test_the_command_always_goes_out_at_full_strength(
     hass: HomeAssistant, rfxtrx, captures
 ) -> None:
+    """Nobody has a reason to send fewer, and a second send reads as a second
+    press, which cancels itself out on a toggle."""
     entry = await setup_integration(hass)
     result = await start_learning(hass, entry)
 
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"name": "Fan light", CONF_REPEATS: 3, CONF_TEST: False}
+        result["flow_id"], {"name": "Fan light", CONF_TEST: False}
     )
-    assert bytes.fromhex(result["data"][CONF_EVENTS][0])[4] == 3
+    assert len(result["data"][CONF_EVENTS]) == 1
+    assert bytes.fromhex(result["data"][CONF_EVENTS][0])[4] == 10
 
 
 async def test_a_toggle_button_becomes_a_switch(
@@ -316,12 +318,7 @@ async def test_a_toggle_button_becomes_a_switch(
 
     await hass.config_entries.subentries.async_configure(
         result["flow_id"],
-        {
-            "name": "Fan light",
-            CONF_KIND: KIND_SWITCH,
-            CONF_REPEATS: 10,
-            CONF_TEST: False,
-        },
+        {"name": "Fan light", CONF_KIND: KIND_SWITCH, CONF_TEST: False},
     )
     await hass.async_block_till_done()
 
@@ -337,18 +334,18 @@ async def test_a_toggle_button_becomes_a_switch(
     assert hass.states.get(entity_id).state == "on"
     assert len(no_transmit) == 1
 
-    # Already on, and the remote only has the one code: sending it would turn
-    # the light off.
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": entity_id}, blocking=True
-    )
-    assert len(no_transmit) == 1
-
     await hass.services.async_call(
         "switch", "turn_off", {"entity_id": entity_id}, blocking=True
     )
     assert hass.states.get(entity_id).state == "off"
     assert len(no_transmit) == 2
+
+    # Asking again after a transmission was lost is the only way back, so it
+    # must send rather than decide the state already matches.
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": entity_id}, blocking=True
+    )
+    assert len(no_transmit) == 3
 
 
 async def test_editing_names_the_entity_and_can_fire_it(
@@ -358,7 +355,7 @@ async def test_editing_names_the_entity_and_can_fire_it(
     entry = await setup_integration(hass)
     result = await start_learning(hass, entry)
     await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"name": "Fan light", CONF_REPEATS: 10, CONF_TEST: False}
+        result["flow_id"], {"name": "Fan light", CONF_TEST: False}
     )
     await hass.async_block_till_done()
     subentry_id = next(iter(entry.subentries))
@@ -374,13 +371,13 @@ async def test_editing_names_the_entity_and_can_fire_it(
     )
 
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"name": "Fan light", CONF_REPEATS: 4, CONF_TEST: True}
+        result["flow_id"], {"name": "Fan light", CONF_TEST: True}
     )
     # Back on the form, and the command was transmitted rather than saved.
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "reconfigure"
     assert len(no_transmit) == 1
-    assert bytes.fromhex(no_transmit[0][0])[4] == 4
+    assert bytes.fromhex(no_transmit[0][0])[4] == 10
 
 
 async def test_closing_the_dialog_stops_the_capture(
