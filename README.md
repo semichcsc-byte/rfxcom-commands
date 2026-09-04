@@ -8,26 +8,30 @@ one — including remotes the RFXCOM cannot decode.
 
 ## Read this before installing
 
-**The learning flow has taken a production Home Assistant down three times, and
-the cause is not yet understood.**
+**The learning flow took a production Home Assistant down three times, and while
+a mechanism that would do exactly that has since been found and fixed, it has
+not been confirmed as the cause.**
 
-The symptom is that Home Assistant stops responding entirely a short while after
-a capture: the port still accepts TCP connections but nothing is served, while
-the host itself stays healthy and the Supervisor eventually restarts Core. It
-needed a manual reboot each time.
+The symptom was that Home Assistant stopped responding entirely a short while
+after a capture: the port still accepted TCP connections but nothing was served,
+while the host itself stayed healthy and the Supervisor eventually restarted
+Core. It needed a manual reboot each time.
 
-What is known:
+What was found: the capture loop awaited a queue, and awaiting a queue that
+already holds an item never reaches the event loop. Home Assistant runs
+everything on one loop, so a capture over a busy band could freeze it outright.
+[tests/test_event_loop.py](tests/test_event_loop.py) reproduces it — without the
+fix the loop gets zero cycles for the whole capture window — and the fix is a
+yield on every iteration.
 
-- It has happened with this integration installed, and also once with it
-  disabled, so this code is not the only thing involved.
-- It follows enabling every receive protocol on the RFXCOM, which is what
-  unlocks raw mode and what a capture has to do.
-- Memory exhaustion and disk space were both investigated and ruled out.
+What is still unproven: whether that alone explains the outages. One of them
+happened with this integration disabled, which no fix here can account for.
 
-**Do not install this on a Home Assistant you depend on.** The capture and
-decoding logic in [tools/rfx_capture.py](tools/rfx_capture.py) runs outside Home
-Assistant and carries none of this risk — if you only want to read a remote,
-start there.
+Two of the three outages were caused by defects that no longer exist, and the
+test suite now covers the paths involved. Even so, **treat this as experimental
+on a Home Assistant you depend on.** The capture and decoding logic in
+[tools/rfx_capture.py](tools/rfx_capture.py) runs outside Home Assistant and
+carries none of this risk — if you only want to read a remote, start there.
 
 ## Why this exists
 
