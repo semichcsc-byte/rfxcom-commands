@@ -16,7 +16,7 @@ from homeassistant.config_entries import (
     ConfigSubentryFlow,
     SubentryFlowResult,
 )
-from homeassistant.const import Platform
+from homeassistant.const import CONF_ENTITY_ID, Platform
 from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er, selector
 from homeassistant.util import slugify
@@ -366,7 +366,14 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         placeholders: dict[str, str] | None = None,
     ) -> SubentryFlowResult:
         current = {**self._defaults, **(user_input or {})}
-        fields: dict[Any, Any] = {
+        entity_id = self._entity_id_for(current.get("name", ""))
+        fields: dict[Any, Any] = {}
+        if step_id == "reconfigure":
+            # Read-only, purely so the id can be selected and copied.
+            fields[
+                vol.Optional(CONF_ENTITY_ID, description={"suggested_value": entity_id})
+            ] = selector.TextSelector(selector.TextSelectorConfig(read_only=True))
+        fields |= {
             vol.Required("name", default=current.get("name", "")): str,
             vol.Optional(
                 CONF_AREA_ID, description={"suggested_value": current.get(CONF_AREA_ID)}
@@ -381,7 +388,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
 
         described = {
             "bits": self._command.bits if self._command else "",
-            "entity_id": self._entity_id_for(current.get("name", "")),
+            "entity_id": entity_id,
         }
         described |= placeholders or {}
         return self.async_show_form(

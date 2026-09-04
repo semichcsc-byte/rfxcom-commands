@@ -46,15 +46,17 @@
         },
         "reconfigure": {
           "title": "Editar comando",
-          "description": "Esta é a `{entity_id}`. Mudar o nome ou a área mantém a mesma entidade, por isso dashboards e automações continuam a funcionar.",
+          "description": "Mudar o nome ou a área mantém a mesma entidade, por isso dashboards e automações continuam a funcionar.",
           "data": {
+            "entity_id": "Entidade",
             "name": "Nome",
             "area_id": "Área",
             "repeats": "Repetições",
-            "test": "Enviar agora",
+            "test": "Testar agora",
             "relearn": "Capturar o comando outra vez"
           },
           "data_description": {
+            "entity_id": "O botão que este comando aciona. Só de leitura; seleciona para copiar.",
             "test": "Transmite o comando já a seguir, para confirmares que continua a funcionar. Nada é guardado enquanto esta caixa estiver marcada."
           }
         },

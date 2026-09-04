@@ -46,15 +46,17 @@
         },
         "reconfigure": {
           "title": "Edit command",
-          "description": "This is `{entity_id}`. Renaming or moving the command keeps the same entity, so dashboards and automations carry on working.",
+          "description": "Renaming or moving the command keeps the same entity, so dashboards and automations carry on working.",
           "data": {
+            "entity_id": "Entity",
             "name": "Name",
             "area_id": "Area",
             "repeats": "Repeats",
-            "test": "Send it now",
+            "test": "Test it now",
             "relearn": "Capture the command again"
           },
           "data_description": {
+            "entity_id": "The button this command drives. Read-only; select it to copy.",
             "test": "Transmits the command straight away so you can check it still works. Nothing is saved while this is ticked."
           }
         },
