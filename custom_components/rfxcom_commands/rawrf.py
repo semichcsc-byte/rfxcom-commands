@@ -158,8 +158,8 @@ def decode(burst: list[bytes], *, min_frames: int = 2) -> Command:
     complete = [f for f in frames if len(f) > 4]
     if len(complete) < min_frames:
         raise RawRFError(
-            f"Only {len(complete)} usable frame(s) captured; press and hold the "
-            "button a moment longer"
+            f"Only {len(complete)} usable frame(s) captured; the transmission "
+            "was cut short"
         )
 
     lengths = {len(f) for f in complete}

@@ -86,16 +86,17 @@ integration by itself.
 
 ## Learn a command
 
-On the integration's page, press **Learn a command**, then press and hold the
-button on your remote for a second or two, within a few metres of the RFXCOM.
+On the integration's page, press **Learn a command**, then press the button on
+your remote once, within a few metres of the RFXCOM.
 
-Holding matters. A frame that arrives once is a frame nothing checked, and a
-single misread bit decodes into a command that looks perfectly plausible and
-does nothing. So the integration listens until it has heard the same bits
-twice, from separate transmissions, on top of requiring the repeated frames
-within each one to agree. A remote repeats itself several times per press, so
-this usually happens before you let go — and the dialog closes the moment it
-does. Too short a press and it will ask you to try again.
+One press is normally enough. A frame that arrives once is a frame nothing
+checked, and a single misread bit decodes into a command that looks perfectly
+plausible and does nothing, so the integration waits until the same bits have
+arrived twice, on top of requiring the repeated frames within each transmission
+to agree. Remotes send their command several times over per press, so that
+threshold is usually met before you have let go, and the dialog closes there
+and then. If a press was not enough it keeps listening for twenty seconds:
+press again.
 
 Then name the command, choose whether it should be a **button** or a
 **switch**, and pick an area. Tick **Test before saving** to transmit it and

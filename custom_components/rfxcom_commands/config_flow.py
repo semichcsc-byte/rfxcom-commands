@@ -320,8 +320,8 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                 self._error = (
                     "Heard the remote, but only once, so there was nothing to "
                     "check the reading against. A single misread bit produces a "
-                    "command that looks right and does nothing. Press and hold "
-                    "the button for a second or two."
+                    "command that looks right and does nothing. Press the "
+                    "button again, a little closer to the RFXCOM."
                 )
             # Most-repeated first: a held button beats a passing neighbour.
             return sorted(confirmed, key=lambda c: repeats[c.bits], reverse=True)

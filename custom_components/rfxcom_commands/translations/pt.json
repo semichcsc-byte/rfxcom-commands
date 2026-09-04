@@ -30,11 +30,11 @@
       "step": {
         "user": {
           "title": "Aprender um comando",
-          "description": "Carrega em Enviar e depois carrega e mantém premido o botão do comando, um ou dois segundos, a poucos metros do RFXCOM.\n\nA escuta pára sozinha assim que ouvir o mesmo comando duas vezes, coisa que um botão mantido premido faz por si. Caso contrário desiste ao fim de 20 segundos, ou assim que fechares esta janela."
+          "description": "Carrega em Enviar e depois carrega uma vez no botão do comando, a poucos metros do RFXCOM.\n\nUma pressão costuma chegar: o comando envia a trama várias vezes seguidas, e a escuta pára assim que a mesma chegar duas vezes. Se não tiver chegado, não se perde nada -- fica à escuta 20 segundos, basta carregares outra vez."
         },
         "select": {
           "title": "Escolhe o comando",
-          "description": "Ouviram-se {count} transmissões diferentes. A do teu comando costuma ser a primeira, porque um botão premido repete-se e um vizinho de passagem não.",
+          "description": "Ouviram-se {count} transmissões diferentes. A do teu comando costuma ser a primeira, porque ele repete-se e um vizinho de passagem não.",
           "data": {
             "captured": "Capturado"
           }
@@ -78,7 +78,7 @@
         }
       },
       "progress": {
-        "learn": "Carrega e mantém o botão do comando premido um ou dois segundos, a poucos metros do RFXCOM. Isto fecha-se sozinho assim que ouvir o comando duas vezes."
+        "learn": "Carrega no botão do comando, a poucos metros do RFXCOM. Isto fecha-se sozinho assim que ouvir o comando."
       },
       "error": {
         "send_failed": "Não foi possível transmitir: {error}"
