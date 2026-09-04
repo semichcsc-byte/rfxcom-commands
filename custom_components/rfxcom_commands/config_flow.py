@@ -37,8 +37,8 @@ from .const import (
     LEARN_TIMEOUT,
     MAX_PACKETS_PER_CAPTURE,
     MAX_REPEATS,
+    MIN_FRAMES,
     MIN_REPEATS,
-    MIN_SIGHTINGS,
     POLL_INTERVAL,
     SUBENTRY_TYPE_COMMAND,
 )
@@ -69,21 +69,12 @@ KIND = selector.SelectSelector(
 )
 
 
-def _explain_failure(
-    listener: RawListener, *, found: bool, decode_error: str | None
-) -> str:
+def _explain_failure(listener: RawListener, *, decode_error: str | None) -> str:
     """Say which of the several ways this can fail actually happened.
 
     "Nothing was received" was reported even when the receiver was busy, which
     sent the search off in entirely the wrong direction.
     """
-    if found:
-        return (
-            "Heard the remote, but only once, so there was nothing to check the "
-            "reading against. A single misread bit produces a command that looks "
-            "right and does nothing. Press the button again, a little closer to "
-            "the RFXCOM."
-        )
     if listener.packets_seen == 0:
         return (
             "Nothing was received at all. Check that the remote is within a few "
@@ -137,9 +128,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
     """Learn one command and turn it into a button."""
 
     def __init__(self) -> None:
-        self._task: asyncio.Task[list[Command]] | None = None
-        self._candidates: list[Command] = []
-        self._sightings: dict[str, int] = {}
+        self._task: asyncio.Task[Command | None] | None = None
         self._command: Command | None = None
         self._error: str | None = None
         self._subentry_id: str | None = None
@@ -237,7 +226,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             )
 
         try:
-            self._candidates = self._task.result()
+            self._command = self._task.result()
         except (RawRFError, GatewayError) as err:
             self._error = str(err)
         except Exception as err:  # noqa: BLE001 - surfaced to the user verbatim
@@ -246,50 +235,12 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
         finally:
             self._task = None
 
-        if self._error or not self._candidates:
+        if self._error or self._command is None:
             return self.async_show_progress_done(next_step_id="failed")
-        return self.async_show_progress_done(next_step_id="select")
+        return self.async_show_progress_done(next_step_id="name")
 
-    async def async_step_select(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Show everything that was captured and let one of them be picked.
-
-        More than one distinct command means either a second remote was in
-        range or the button sends more than one code. Either way the user can
-        see what arrived rather than being told the capture failed.
-        """
-        if len(self._candidates) == 1:
-            self._command = self._candidates[0]
-            return await self.async_step_name()
-
-        if user_input is not None:
-            self._command = self._candidates[int(user_input["captured"])]
-            return await self.async_step_name()
-
-        options = [
-            selector.SelectOptionDict(
-                value=str(index),
-                label=f"{command.bits}  (heard {self._sightings.get(command.bits, 1)}x)",
-            )
-            for index, command in enumerate(self._candidates)
-        ]
-        return self.async_show_form(
-            step_id="select",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("captured", default="0"): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=options, mode=selector.SelectSelectorMode.LIST
-                        )
-                    )
-                }
-            ),
-            description_placeholders={"count": str(len(self._candidates))},
-        )
-
-    async def _capture(self) -> list[Command]:
-        """Collect every distinct command heard, best first.
+    async def _capture(self) -> Command | None:
+        """Wait for one transmission that corroborates itself.
 
         Bursts are assembled strictly by packet index. A burst can never hold
         more than four packets, so anything that does not fit that shape is a
@@ -301,8 +252,6 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             deadline = time.monotonic() + LEARN_TIMEOUT
             burst: list[bytes] = []
             seen = 0
-            found: dict[str, Command] = {}
-            repeats: dict[str, int] = {}
             last_decode_error: str | None = None
 
             while time.monotonic() < deadline:
@@ -318,7 +267,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
 
                 seen += 1
                 if seen > MAX_PACKETS_PER_CAPTURE:
-                    break  # too busy to keep listening; report what we have
+                    break  # too busy to keep listening; give up
 
                 index = packet[2]
                 if index == 0:
@@ -334,31 +283,15 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                     continue
 
                 try:
-                    command = decode(burst)
+                    command = decode(burst, min_frames=MIN_FRAMES)
                 except RawRFError as err:
                     last_decode_error = str(err)
                     burst = []
                     continue
-                burst = []
+                return command
 
-                repeats[command.bits] = repeats.get(command.bits, 0) + 1
-                found.setdefault(command.bits, command)
-                if repeats[command.bits] >= MIN_SIGHTINGS:
-                    break  # heard the same bits twice, so stop straight away
-
-            # Kept so the picker can show how often each one was heard.
-            self._sightings = repeats
-            confirmed = [
-                command
-                for command in found.values()
-                if repeats[command.bits] >= MIN_SIGHTINGS
-            ]
-            if not confirmed:
-                self._error = _explain_failure(
-                    listener, found=bool(found), decode_error=last_decode_error
-                )
-            # Most-repeated first: a held button beats a passing neighbour.
-            return sorted(confirmed, key=lambda c: repeats[c.bits], reverse=True)
+            self._error = _explain_failure(listener, decode_error=last_decode_error)
+            return None
 
     async def async_step_failed(
         self, user_input: dict[str, Any] | None = None
@@ -377,7 +310,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
                 },
             )
         self._error = None
-        self._candidates = []
+        self._command = None
         return await self.async_step_learn()
 
     # --- naming and saving ----------------------------------------------
@@ -442,9 +375,7 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
 
         described = {
             "bits": self._command.bits if self._command else "",
-            "heard": str(
-                self._sightings.get(self._command.bits, 0) if self._command else 0
-            ),
+            "frames": str(self._command.frames_seen if self._command else 0),
             "entity_id": entity_id,
         }
         described |= placeholders or {}

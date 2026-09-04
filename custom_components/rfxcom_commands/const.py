@@ -40,9 +40,7 @@ POLL_INTERVAL = 0.25
 # packets far faster than a remote does. Give up rather than accumulate.
 MAX_PACKETS_PER_CAPTURE = 2000
 
-# A frame read once is a frame nobody checked. A dropped bit decodes into a
-# perfectly plausible command that simply does not work, so the same bits have
-# to arrive this many times before the capture is over. A remote repeats itself
-# several times per press, so this is normally reached before the button is
-# even released.
-MIN_SIGHTINGS = 2
+# A frame read once is a frame nobody checked, so a capture is only accepted
+# when several frames of the same transmission agree. A press carries four of
+# them, which is why one press is enough and a second is never asked for.
+MIN_FRAMES = 3

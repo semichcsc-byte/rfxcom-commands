@@ -15,6 +15,7 @@ Pulse durations are microseconds; a pulse train alternates mark and space.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from statistics import median
 
@@ -144,11 +145,12 @@ def _frame_bits(frame: list[int], short: int, long: int) -> str:
     return "".join("1" if frame[i] > midpoint else "0" for i in range(0, len(frame), 2))
 
 
-def decode(burst: list[bytes], *, min_frames: int = 2) -> Command:
+def decode(burst: list[bytes], *, min_frames: int = 3) -> Command:
     """Turn one captured burst into a replayable command.
 
     Requires the repeated frames within the burst to agree, which is what makes
-    a capture trustworthy: a remote repeats itself, noise does not.
+    a capture trustworthy: a remote repeats itself, noise does not. A single
+    press carries several frames, so this needs no second press.
     """
     pulses = burst_pulses(burst)
     short, long, gap = _symbol_durations(pulses)
@@ -162,11 +164,20 @@ def decode(burst: list[bytes], *, min_frames: int = 2) -> Command:
             "was cut short"
         )
 
-    lengths = {len(f) for f in complete}
-    reference_length = max(lengths, key=lambda n: sum(len(f) == n for f in complete))
+    # The longest length that repeats enough, not the most common one. A lost
+    # pulse shortens a frame and no amount of noise lengthens one consistently,
+    # so a short reading must never be able to outvote the full-length one --
+    # which is what happened in the field, silently, because ties between
+    # equally common lengths were broken by set iteration order.
+    counts = Counter(len(frame) for frame in complete)
+    qualifying = [length for length, count in counts.items() if count >= min_frames]
+    if not qualifying:
+        raise RawRFError(
+            "The captured frames disagree in length, so none of them is "
+            "corroborated. Try again."
+        )
+    reference_length = max(qualifying)
     candidates = [f for f in complete if len(f) == reference_length]
-    if len(candidates) < min_frames:
-        raise RawRFError("The captured frames disagree in length; try again")
 
     decoded = {_frame_bits(f, short, long) for f in candidates}
     if len(decoded) != 1:

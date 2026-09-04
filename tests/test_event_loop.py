@@ -32,6 +32,8 @@ class FloodingListener:
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._index = 0
+        self.packets_seen = 0
+        self.raw_seen = 0
 
     async def __aenter__(self) -> FloodingListener:
         return self
@@ -50,7 +52,7 @@ async def test_capture_keeps_yielding_under_a_flood(
 ) -> None:
     monkeypatch.setattr(config_flow, "RawListener", FloodingListener)
     monkeypatch.setattr(config_flow, "LEARN_TIMEOUT", 0.5)
-    monkeypatch.setattr(config_flow, "MIN_SIGHTINGS", 10**9)  # never settle
+    monkeypatch.setattr(config_flow, "MIN_FRAMES", 10**9)  # never settle
 
     ticks = 0
 

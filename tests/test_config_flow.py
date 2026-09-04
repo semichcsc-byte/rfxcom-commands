@@ -203,20 +203,17 @@ async def test_silence_leads_to_the_failure_step(
     assert "Nothing was received" in result["description_placeholders"]["error"]
 
 
-async def test_a_command_heard_only_once_is_refused(
+async def test_a_single_press_is_enough(
     hass: HomeAssistant, rfxtrx, heard_once
 ) -> None:
-    """A reading with nothing to check it against dropped a bit in the field.
-
-    It decoded cleanly and produced a command that looked right and did
-    nothing, which is the worst possible outcome, so one sighting is not enough.
-    """
+    """One press carries several frames, so nothing more should be asked for."""
     entry = await setup_integration(hass)
     result = await start_learning(hass, entry)
 
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "failed"
-    assert "only once" in result["description_placeholders"]["error"]
+    assert result["step_id"] == "name"
+    assert result["description_placeholders"]["bits"] == EXPECTED_BITS
+    assert result["description_placeholders"]["frames"] == "4"
 
 
 async def test_listening_stops_as_soon_as_it_is_sure(

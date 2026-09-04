@@ -70,6 +70,32 @@ class TestDecode(unittest.TestCase):
         with self.assertRaises(RawRFError):
             decode(CAPTURE, min_frames=99)
 
+    def test_a_short_frame_cannot_outvote_the_full_one(self) -> None:
+        """A lost pulse pair shortens a frame and changes every bit after it.
+
+        In the field this produced a command that looked plausible and did
+        nothing, because equally common lengths were resolved by set iteration
+        order rather than by preferring the longer reading.
+        """
+        frame = list(self.command.pulses[:-1])
+        gap = self.command.gap
+        clipped = frame[:24] + frame[26:]  # one bit lost mid-frame
+
+        train = (frame + [gap]) * 3 + (clipped + [gap]) * 3
+        packets = [
+            _rx_packet(train[index : index + 124], index // 124, index + 124 >= len(train))
+            for index in range(0, len(train), 124)
+        ]
+
+        self.assertEqual(decode(packets).bits, EXPECTED_BITS)
+
+
+def _rx_packet(pulses: list[int], index: int, last: bool) -> bytes:
+    """Pack a slice of a pulse train the way the receiver reports it."""
+    body = b"".join(pulse.to_bytes(2, "big") for pulse in pulses)
+    payload = bytes([0x7F, index, 0, 1 if last else 0]) + body
+    return bytes([len(payload)]) + payload
+
 
 class TestBuildPackets(unittest.TestCase):
     def test_single_packet_layout(self) -> None:

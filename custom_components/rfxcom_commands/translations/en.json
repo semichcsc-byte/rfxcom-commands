@@ -30,18 +30,11 @@
       "step": {
         "user": {
           "title": "Learn a command",
-          "description": "Press Submit, then press the button on your remote once, within a few metres of the RFXCOM.\n\nOne press is normally enough: a remote sends its command several times over, and listening stops the moment the same one has arrived twice. If it was not enough, nothing is lost -- it keeps listening for 20 seconds, so just press again."
-        },
-        "select": {
-          "title": "Pick the command",
-          "description": "{count} different transmissions were heard. The one your remote sent is normally at the top, because it repeats itself and a passing neighbour does not.",
-          "data": {
-            "captured": "Captured"
-          }
+          "description": "Press Submit, then press the button on your remote, within a few metres of the RFXCOM.\n\nThis closes itself as soon as it recognises the command. If nothing happens, press again -- there is time."
         },
         "name": {
           "title": "Name the command",
-          "description": "Captured: {bits}\n\nHeard {heard} times, which is what makes it trustworthy: a reading nobody could check against another may be missing a bit.\n\nThe entity will be created as `{entity_id}`.\n\nTick Test to transmit it and check it does the right thing. Nothing is saved until you leave that box unticked.",
+          "description": "Captured: {bits}\n\nRead {frames} times in the one transmission, all agreeing.\n\nThe entity will be created as `{entity_id}`.\n\nTick Test to transmit it and check it does the right thing. Nothing is saved until you leave that box unticked.",
           "data": {
             "name": "Name",
             "kind": "Entity",
@@ -78,7 +71,7 @@
         }
       },
       "progress": {
-        "learn": "Press the button on your remote, within a few metres of the RFXCOM. This closes itself as soon as it has heard the command."
+        "learn": "Press the button on your remote now."
       },
       "error": {
         "send_failed": "Could not transmit: {error}"

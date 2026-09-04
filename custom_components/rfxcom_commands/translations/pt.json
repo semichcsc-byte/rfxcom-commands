@@ -30,18 +30,11 @@
       "step": {
         "user": {
           "title": "Aprender um comando",
-          "description": "Carrega em Enviar e depois carrega uma vez no botão do comando, a poucos metros do RFXCOM.\n\nUma pressão costuma chegar: o comando envia a trama várias vezes seguidas, e a escuta pára assim que a mesma chegar duas vezes. Se não tiver chegado, não se perde nada -- fica à escuta 20 segundos, basta carregares outra vez."
-        },
-        "select": {
-          "title": "Escolhe o comando",
-          "description": "Ouviram-se {count} transmissões diferentes. A do teu comando costuma ser a primeira, porque ele repete-se e um vizinho de passagem não.",
-          "data": {
-            "captured": "Capturado"
-          }
+          "description": "Carrega em Enviar e depois carrega no botão do comando, a poucos metros do RFXCOM.\n\nA janela fecha-se sozinha assim que reconhecer o comando. Se não acontecer nada, carrega outra vez -- há tempo."
         },
         "name": {
           "title": "Dar nome ao comando",
-          "description": "Capturado: {bits}\n\nOuvido {heard} vezes, e é isso que o torna de confiança: uma leitura que não pôde ser comparada com outra pode ter perdido um bit.\n\nA entidade vai ser criada como `{entity_id}`.\n\nMarca Testar para o transmitir e confirmar que faz o que deve. Nada é guardado enquanto essa caixa estiver marcada.",
+          "description": "Capturado: {bits}\n\nLido {frames} vezes na mesma transmissão, todas concordantes.\n\nA entidade vai ser criada como `{entity_id}`.\n\nMarca Testar para o transmitir e confirmar que faz o que deve. Nada é guardado enquanto essa caixa estiver marcada.",
           "data": {
             "name": "Nome",
             "kind": "Entidade",
@@ -78,7 +71,7 @@
         }
       },
       "progress": {
-        "learn": "Carrega no botão do comando, a poucos metros do RFXCOM. Isto fecha-se sozinho assim que ouvir o comando."
+        "learn": "Carrega agora no botão do comando."
       },
       "error": {
         "send_failed": "Não foi possível transmitir: {error}"
