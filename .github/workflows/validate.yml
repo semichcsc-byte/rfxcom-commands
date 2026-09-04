@@ -32,6 +32,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          # Home Assistant 2026.9 requires 3.14, and so does the test harness
+          # that pins to it.
+          python-version: "3.14"
       - run: pip install -r requirements_test.txt
       - run: pytest
