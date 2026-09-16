@@ -128,7 +128,7 @@ by the RFXCOM or not. Press buttons on your remote and read them off.
 | **Last code** | the same thing as bits |
 | **Last code repeats** | how many times the remote sent it, which is how it will be replayed |
 | **Last code jitter** | how far the pulses sat from their ideal lengths; a few percent is clean, a large figure is a receiver straining on a distant or off-frequency remote |
-| **Last code encoding** | `pwm`, `ppm`, `manchester` or `unknown`. Only `pwm` is decoded, so anything else means the bits are a misreading — the pulses still replay correctly |
+| **Last code encoding** | `pwm`, `ppm`, `manchester` or `unknown`. Only `pwm` is decoded; other codes are pulse-length signatures, not protocol bits |
 | **Receiver band** | the band your RFXtrx is tuned to |
 
 **Receiver band** is the receiver's own fixed frequency, not a measurement of
@@ -158,10 +158,23 @@ a crowded one.
 Put it on a dashboard, or use `rfxcom_commands_raw` as an automation trigger:
 one is fired per command as it is decoded.
 
+For non-PWM signals, the signature includes both marks and spaces so different
+commands remain distinguishable. Learning checks that complete normalised
+frames agree, including their spaces; transmission uses the captured pulse
+lengths, not the displayed signature. Relearn non-PWM commands captured with
+older versions if they do not behave correctly: their saved pulses cannot be
+revalidated without a new capture.
+
 The RFXCOM decodes nothing else while the scanner is on, so it switches itself
 off after ten minutes. **Configure** on the integration page does the same
 thing for a fixed window and hands back a written summary, and the
 **RFXCOM Commands: watch** action does it as structured data.
+
+Scanner, learning and watch share one exclusive capture session. Stop the
+current session before starting another. Cancelling also waits for in-flight
+mode writes and protocol restoration to finish before releasing the receiver.
+Scanner startup failures are returned by the switch action and retained in its
+`error` attribute.
 
 ## Repeats
 
@@ -187,6 +200,10 @@ keeps running throughout — no reload, no gap in coverage.
 Nothing about your normal protocol list changes permanently, and transmitting
 does not depend on it — once a command is learned, its button works with your
 usual protocols active.
+
+Concurrent transmissions from this integration are queued as complete commands,
+so their packets cannot interleave. Cancelling a transmission that has started
+waits for its remaining packets; it does not interrupt the radio burst.
 
 ## Edit a command
 

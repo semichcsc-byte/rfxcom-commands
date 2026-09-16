@@ -13,15 +13,19 @@ from types import SimpleNamespace
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.rfxcom_commands import gateway
+from custom_components.rfxcom_commands.config_flow import CommandSubentryFlowHandler
 from custom_components.rfxcom_commands.gateway import (
     GatewayError,
     RawListener,
     current_protocols,
     find_entry,
 )
+from custom_components.rfxcom_commands.scanner import Scanner
+from custom_components.rfxcom_commands.services import async_listen
 
 RAW_PACKET = bytes.fromhex("087f000000017c046f")
 UNDECODED_PACKET = bytes.fromhex("05030c2405f8")
@@ -198,3 +202,194 @@ async def test_protocols_are_restored_after_a_failure(
 
     assert len(rfxtrx.transport.sent) == 2
     assert "parse" not in rfxtrx.transport.__dict__
+
+
+async def test_cancel_during_mode_entry_restores_and_releases(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    entered = asyncio.Event()
+    original = RawListener._async_set_protocols
+
+    async def set_protocols(listener, protocols, band=None):
+        await original(listener, protocols, band)
+        if len(rfxtrx.transport.sent) == 1:
+            entered.set()
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(RawListener, "_async_set_protocols", set_protocols)
+    task = asyncio.create_task(RawListener(hass).__aenter__())
+    await entered.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert len(rfxtrx.transport.sent) == 2
+    assert "parse" not in vars(rfxtrx.transport)
+    async with RawListener(hass):
+        pass
+
+
+async def test_cancel_waits_for_pending_write_before_restore(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def write(function, *args):
+        if not rfxtrx.transport.sent:
+            started.set()
+            await release.wait()
+        function(*args)
+
+    original_executor = hass.async_add_executor_job
+    monkeypatch.setattr(
+        hass, "async_add_executor_job",
+        lambda function, *args: (
+            asyncio.create_task(write(function, *args))
+            if function == rfxtrx.transport.send
+            else original_executor(function, *args)
+        ),
+    )
+    task = asyncio.create_task(RawListener(hass).__aenter__())
+    await started.wait()
+    task.cancel()
+    await asyncio.sleep(0)
+    assert not task.done()
+    with pytest.raises(GatewayError, match="Already listening"):
+        async with RawListener(hass):
+            pass
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert len(rfxtrx.transport.sent) == 2
+    assert rfxtrx.transport.sent[-1][7:11] != rfxtrx.transport.sent[0][7:11]
+    assert "parse" not in vars(rfxtrx.transport)
+
+
+async def test_overlapping_capture_is_rejected_without_touching_first(
+    hass: HomeAssistant, rfxtrx
+) -> None:
+    async with RawListener(hass) as first:
+        hook = rfxtrx.transport.parse
+        with pytest.raises(GatewayError, match="Already listening"):
+            async with RawListener(hass):
+                pass
+        assert rfxtrx.transport.parse is hook
+        assert len(rfxtrx.transport.sent) == 1
+        rfxtrx.transport.parse(RAW_PACKET)
+        assert await first.next_packet(0.1) == RAW_PACKET
+
+
+async def test_existing_transport_hook_is_restored(
+    hass: HomeAssistant, rfxtrx
+) -> None:
+    original = lambda packet: packet
+    rfxtrx.transport.parse = original
+    async with RawListener(hass):
+        pass
+    assert rfxtrx.transport.parse is original
+
+
+async def test_multipart_sends_are_atomic_even_when_cancelled(
+    hass: HomeAssistant,
+) -> None:
+    sent = []
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def service(call):
+        sent.append(call.data["event"])
+        if call.data["event"] == "A0":
+            started.set()
+            await release.wait()
+
+    hass.services.async_register("rfxtrx", "send", service)
+    first = asyncio.create_task(gateway.async_send(hass, ["A0", "A1"]))
+    await started.wait()
+    second = asyncio.create_task(gateway.async_send(hass, ["B0", "B1"]))
+    first.cancel()
+    await asyncio.sleep(0)
+    assert sent == ["A0"]
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    await second
+    assert sent == ["A0", "A1", "B0", "B1"]
+
+
+async def test_failed_mode_entry_restores_and_releases(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    original = rfxtrx.transport.send
+
+    def fail_after_write(packet):
+        original(packet)
+        if len(rfxtrx.transport.sent) == 1:
+            raise OSError("Mode write failed")
+
+    monkeypatch.setattr(rfxtrx.transport, "send", fail_after_write)
+    with pytest.raises(GatewayError, match="Mode write failed"):
+        async with RawListener(hass):
+            pass
+    assert len(rfxtrx.transport.sent) == 2
+    assert "parse" not in vars(rfxtrx.transport)
+    async with RawListener(hass):
+        pass
+
+
+async def test_repeated_cancellation_waits_for_restore(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    restoring = asyncio.Event()
+    release = asyncio.Event()
+    original = RawListener._async_set_protocols
+
+    async def set_protocols(listener, protocols, band=None):
+        if protocols == ["arc", "x10"]:
+            restoring.set()
+            await release.wait()
+        await original(listener, protocols, band)
+
+    monkeypatch.setattr(RawListener, "_async_set_protocols", set_protocols)
+
+    async def capture():
+        async with RawListener(hass):
+            pass
+
+    task = asyncio.create_task(capture())
+    await restoring.wait()
+    for _attempt in range(2):
+        task.cancel()
+        await asyncio.sleep(0)
+    assert not task.done()
+    with pytest.raises(GatewayError, match="Already listening"):
+        async with RawListener(hass):
+            pass
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert len(rfxtrx.transport.sent) == 2
+    assert "parse" not in vars(rfxtrx.transport)
+    async with RawListener(hass):
+        pass
+
+
+async def test_scanner_excludes_learning_and_watch(
+    hass: HomeAssistant, rfxtrx
+) -> None:
+    scanner = Scanner(hass)
+    handler = CommandSubentryFlowHandler()
+    handler.hass = hass
+    await scanner.async_start()
+    hook = rfxtrx.transport.parse
+    try:
+        with pytest.raises(GatewayError, match="Already listening"):
+            await handler._capture()
+        with pytest.raises(HomeAssistantError, match="Already listening"):
+            await async_listen(hass, 1)
+        assert rfxtrx.transport.parse is hook
+        assert len(rfxtrx.transport.sent) == 1
+        assert scanner.running
+    finally:
+        await scanner.async_stop()
+    assert len(rfxtrx.transport.sent) == 2
+    assert "parse" not in vars(rfxtrx.transport)

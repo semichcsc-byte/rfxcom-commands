@@ -59,6 +59,10 @@ class ScannerSwitch(SwitchEntity):
     def is_on(self) -> bool:
         return self._scanner.running
 
+    @property
+    def extra_state_attributes(self) -> dict[str, str | None]:
+        return {"error": self._scanner.error}
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self._scanner.async_start()
         if self._scanner.error:

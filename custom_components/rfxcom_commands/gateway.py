@@ -28,7 +28,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
-from .const import RFXTRX_DATA_OBJECT, RFXTRX_DOMAIN, RFXTRX_SERVICE_SEND
+from .const import DOMAIN, RFXTRX_DATA_OBJECT, RFXTRX_DOMAIN, RFXTRX_SERVICE_SEND
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,6 +44,31 @@ QUEUE_SIZE = 64
 
 class GatewayError(Exception):
     """Raised when the RFXtrx cannot be reached or driven."""
+
+
+def _lock(hass: HomeAssistant, name: str) -> asyncio.Lock:
+    locks = hass.data.setdefault(f"{DOMAIN}_gateway_locks", {})
+    return locks.setdefault(name, asyncio.Lock())
+
+
+async def _async_finish(task: asyncio.Future[Any]) -> Any:
+    """Finish an in-flight operation before propagating cancellation.
+
+    Cancelling an executor future does not stop its serial write. Cleanup and
+    the next command must wait until that write has actually finished.
+    """
+    cancelled = False
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+    if cancelled:
+        try:
+            task.result()
+        finally:
+            raise asyncio.CancelledError
+    return task.result()
 
 
 def find_entry(hass: HomeAssistant) -> ConfigEntry:
@@ -179,10 +204,14 @@ async def async_send(hass: HomeAssistant, events: list[str]) -> None:
     Multi-packet commands must arrive as a run: the device buffers them and
     transmits when the packet flagged last shows up.
     """
-    for event in events:
-        await hass.services.async_call(
-            RFXTRX_DOMAIN, RFXTRX_SERVICE_SEND, {"event": event}, blocking=True
-        )
+    async def send_command() -> None:
+        for event in events:
+            await hass.services.async_call(
+                RFXTRX_DOMAIN, RFXTRX_SERVICE_SEND, {"event": event}, blocking=True
+            )
+
+    async with _lock(hass, "send"):
+        await _async_finish(hass.async_create_task(send_command()))
 
 
 class RawListener:
@@ -199,6 +228,8 @@ class RawListener:
         self._previous: list[str] | None = None
         self._transport: Any = None
         self._original_parse: Callable[[Any], Any] | None = None
+        self._had_instance_parse = False
+        self._capture_lock: asyncio.Lock | None = None
         self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=QUEUE_SIZE)
         self._loop = asyncio.get_running_loop()
         # Counted so a failed capture can say which of the two things went
@@ -207,40 +238,44 @@ class RawListener:
         self.raw_seen = 0
 
     async def __aenter__(self) -> RawListener:
-        find_entry(self._hass)  # fails with a clear message when not set up
-        self._rfx = _rfx_object(self._hass)
-
-        previous = current_protocols(self._hass)
-        if not previous:
-            raise GatewayError(
-                "Cannot tell which protocols the RFXCOM is decoding, so they "
-                "could not be restored afterwards. Set the protocol list in the "
-                "RFXCOM integration options, then try again."
-            )
-        self._previous = previous
-
-        self._install_hook()
+        capture_lock = _lock(self._hass, "capture")
+        if capture_lock.locked():
+            raise GatewayError("Already listening. Stop the current capture first.")
+        await capture_lock.acquire()
+        self._capture_lock = capture_lock
         try:
+            find_entry(self._hass)
+            self._rfx = _rfx_object(self._hass)
+            previous = current_protocols(self._hass)
+            if not previous:
+                raise GatewayError(
+                    "Cannot tell which protocols the RFXCOM is decoding, so they "
+                    "could not be restored afterwards. Set the protocol list in the "
+                    "RFXCOM integration options, then try again."
+                )
+            self._previous = previous
+            self._install_hook()
             await self._async_set_protocols(supported_protocols(), band=self._band)
-        except Exception:
-            self._remove_hook()
+        except (Exception, asyncio.CancelledError):
+            await self.__aexit__()
             raise
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
+        await _async_finish(self._hass.async_create_task(self._async_close()))
+
+    async def _async_close(self) -> None:
         try:
             if self._previous is not None:
-                # Shielded: when the capture is cancelled the restore still has
-                # to finish, or the RFXCOM is left decoding everything.
-                await asyncio.shield(
-                    self._async_set_protocols(self._previous)
-                )
-        except asyncio.CancelledError:
-            pass  # the shielded restore carries on without us
+                await self._async_set_protocols(self._previous)
         except Exception:  # noqa: BLE001 - never mask the original failure
             _LOGGER.exception("Could not restore the RFXCOM protocol list")
         finally:
             self._remove_hook()
+            self._previous = None
+            if self._capture_lock is not None:
+                self._capture_lock.release()
+                self._capture_lock = None
 
     async def _async_set_protocols(
         self, protocols: list[str], band: int | None = None
@@ -254,7 +289,10 @@ class RawListener:
             packet.hex(),
         )
         try:
-            await self._hass.async_add_executor_job(transport.send, packet)
+            async with _lock(self._hass, "send"):
+                await _async_finish(
+                    self._hass.async_add_executor_job(transport.send, packet)
+                )
         except Exception as err:  # noqa: BLE001 - surfaced to the user
             raise GatewayError(f"Could not change the RFXCOM mode: {err}") from err
         await asyncio.sleep(MODE_SETTLE)
@@ -262,6 +300,7 @@ class RawListener:
     def _install_hook(self) -> None:
         transport = self._rfx.transport
         original = transport.parse
+        self._had_instance_parse = "parse" in vars(transport)
 
         def _queue(packet: bytes) -> None:
             if self._queue.full():
@@ -286,12 +325,10 @@ class RawListener:
     def _remove_hook(self) -> None:
         if self._transport is None:
             return
-        # Delete rather than restore, so the class method takes over again and
-        # a stale closure cannot outlive this capture.
-        try:
-            del self._transport.parse
-        except AttributeError:
+        if self._had_instance_parse:
             self._transport.parse = self._original_parse
+        else:
+            del self._transport.parse
         self._transport = None
         self._original_parse = None
 

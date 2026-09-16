@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -18,7 +19,8 @@ from test_config_flow import FakeListener  # noqa: E402
 
 from custom_components.rfxcom_commands import capture as capture_module  # noqa: E402
 from custom_components.rfxcom_commands import scanner as scanner_module  # noqa: E402
-from custom_components.rfxcom_commands.const import DOMAIN  # noqa: E402
+from custom_components.rfxcom_commands.const import DOMAIN, EVENT_RAW_COMMAND  # noqa: E402
+from custom_components.rfxcom_commands.gateway import GatewayError  # noqa: E402
 
 SCANNER = "switch.rfxcom_commands_scanner"
 LAST_CODE = "sensor.rfxcom_commands_last_code"
@@ -66,6 +68,8 @@ async def test_the_scanner_publishes_codes_as_they_arrive(
     assert hass.states.get(SCANNER).state == "off"
     assert hass.states.get(LAST_CODE).state == "unknown"
 
+    announced = []
+    hass.bus.async_listen(EVENT_RAW_COMMAND, lambda event: announced.append(event.data))
     await hass.services.async_call(
         "switch", "turn_on", {"entity_id": SCANNER}, blocking=True
     )
@@ -88,6 +92,10 @@ async def test_the_scanner_publishes_codes_as_they_arrive(
     )
     assert hass.states.get("sensor.rfxcom_commands_last_code_jitter").state == "1.4"
     assert hass.states.get("sensor.rfxcom_commands_last_code_encoding").state == "pwm"
+    assert [record["bits"] for record in announced] == [EXPECTED_BITS] * 2
+    assert [record["heard"] for record in announced] == [1, 2]
+    assert announced[0]["hex"] == "0x012D916A"
+    assert announced[0]["repeats"] == 4
 
     # The window closed on its own, so the receiver is not left deaf.
     assert hass.states.get(SCANNER).state == "off"
@@ -261,3 +269,70 @@ async def test_rolling_code_holds_off_until_there_is_evidence(
     scanner._notify()
     await hass.async_block_till_done()
     assert hass.states.get(ROLLING).state == "no"
+
+
+async def test_startup_failure_reaches_the_service_and_entity(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    def unavailable(hass, band=None):
+        raise GatewayError("The gateway is disconnected")
+
+    monkeypatch.setattr(scanner_module, "RawListener", unavailable)
+    await setup_integration(hass)
+    with pytest.raises(HomeAssistantError, match="gateway is disconnected"):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": SCANNER}, blocking=True
+        )
+    await hass.async_block_till_done()
+    state = hass.states.get(SCANNER)
+    assert state.state == "off"
+    assert state.attributes["error"] == "The gateway is disconnected"
+
+
+async def test_start_waits_for_the_listener_to_open(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    opening = asyncio.Event()
+    release = asyncio.Event()
+
+    class SlowListener(FakeListener):
+        async def __aenter__(self):
+            opening.set()
+            await release.wait()
+            return self
+
+    monkeypatch.setattr(scanner_module, "RawListener", SlowListener)
+    scanner = scanner_module.Scanner(hass)
+    start = asyncio.create_task(scanner.async_start())
+    await opening.wait()
+    assert not start.done()
+    release.set()
+    await start
+    assert scanner.running
+    await scanner.async_stop()
+    assert not scanner.running
+
+
+async def test_cancelling_start_stops_the_pending_listener(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    opening = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    class SlowListener(FakeListener):
+        async def __aenter__(self):
+            opening.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+    monkeypatch.setattr(scanner_module, "RawListener", SlowListener)
+    scanner = scanner_module.Scanner(hass)
+    start = asyncio.create_task(scanner.async_start())
+    await opening.wait()
+    start.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await start
+    assert cancelled.is_set()
+    assert not scanner.running

@@ -6,7 +6,6 @@ nothing -- so this listens for a bounded window and puts the receiver back.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -41,51 +40,39 @@ WATCH_SCHEMA = vol.Schema(
     }
 )
 
-# Raw mode is a property of the device, so two listeners would fight over it.
-_in_progress = asyncio.Lock()
-
-
 async def async_listen(hass: HomeAssistant, seconds: int) -> dict[str, Any]:
     """Collect every command heard within the window.
 
     Each one is announced on the event bus as it arrives, so it can be watched
     live as well as read afterwards.
     """
-    if _in_progress.locked():
-        raise HomeAssistantError(
-            "Already listening. Raw mode belongs to the device, so only one "
-            "capture can run at a time."
-        )
-
     heard: dict[str, dict[str, Any]] = {}
-    async with _in_progress:
-        try:
-            async with RawListener(hass) as listener:
-                capture = Capture(listener)
-                async for command in capture.commands(seconds):
-                    record = heard.get(command.bits)
-                    if record is None:
-                        record = heard[command.bits] = {
-                            "bits": command.bits,
-                            "hex": command.hex,
-                            "bit_count": len(command.bits),
-                            "inverted": command.inverted,
-                            "heard": 0,
-                            "repeats": command.frames_seen,
-                            "encoding": command.encoding,
-                            "jitter_pct": command.jitter_pct,
-                            "short_us": command.short,
-                            "long_us": command.long,
-                            "gap_us": command.gap,
-                            "frame_us": command.frame_us,
-                            "burst_us": command.burst_us,
-                            "pulses": len(command.pulses),
-                        }
-                    record["heard"] += 1
-                    # Fired as it happens, so it can also be watched live.
-                    hass.bus.async_fire(EVENT_RAW_COMMAND, dict(record))
-        except GatewayError as err:
-            raise HomeAssistantError(str(err)) from err
+    try:
+        async with RawListener(hass) as listener:
+            capture = Capture(listener)
+            async for command in capture.commands(seconds):
+                record = heard.get(command.bits)
+                if record is None:
+                    record = heard[command.bits] = {
+                        "bits": command.bits,
+                        "hex": command.hex,
+                        "bit_count": len(command.bits),
+                        "inverted": command.inverted,
+                        "heard": 0,
+                        "repeats": command.frames_seen,
+                        "encoding": command.encoding,
+                        "jitter_pct": command.jitter_pct,
+                        "short_us": command.short,
+                        "long_us": command.long,
+                        "gap_us": command.gap,
+                        "frame_us": command.frame_us,
+                        "burst_us": command.burst_us,
+                        "pulses": len(command.pulses),
+                    }
+                record["heard"] += 1
+                hass.bus.async_fire(EVENT_RAW_COMMAND, dict(record))
+    except GatewayError as err:
+        raise HomeAssistantError(str(err)) from err
 
     return {
         "heard": sorted(heard.values(), key=lambda r: r["heard"], reverse=True),

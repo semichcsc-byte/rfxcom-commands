@@ -427,9 +427,8 @@ class CommandSubentryFlowHandler(ConfigSubentryFlow):
             + (
                 ""
                 if command is None or command.trustworthy
-                else " -- these bits are a mark-length reading of something "
-                "else, so they may not mean what the remote means. Replaying "
-                "the pulses still works."
+                else " -- this is a pulse-length signature, not decoded "
+                "protocol bits. The captured pulses are used for replay."
             ),
             "entity_id": entity_id,
         }

@@ -128,6 +128,24 @@ class TestDecode(unittest.TestCase):
 
         self.assertEqual(decode(packets).bits, EXPECTED_BITS)
 
+    def test_gap_encoded_commands_have_distinct_signatures(self) -> None:
+        first = [400, 1200, 400, 400, 400, 1200, 400, 400, 400]
+        second = [400, 400, 400, 1200, 400, 400, 400, 1200, 400]
+        first_command = decode([_rx_packet((first + [8000]) * 3, 0, True)])
+        second_command = decode([_rx_packet((second + [8000]) * 3, 0, True)])
+        self.assertEqual(first_command.encoding, "ppm")
+        self.assertEqual(second_command.encoding, "ppm")
+        self.assertNotEqual(first_command.bits, second_command.bits)
+        self.assertEqual(first_command.pulses, tuple(first + [8000]))
+        self.assertEqual(second_command.pulses, tuple(second + [8000]))
+
+    def test_conflicting_spaces_cannot_corroborate_a_capture(self) -> None:
+        first = [400, 1200, 400, 400, 400, 1200, 400, 400, 400]
+        second = [400, 400, 400, 1200, 400, 400, 400, 1200, 400]
+        train = first + [8000] + second + [8000] + first + [8000]
+        with self.assertRaisesRegex(RawRFError, "do not agree"):
+            decode([_rx_packet(train, 0, True)])
+
 
 def _rx_packet(pulses: list[int], index: int, last: bool) -> bytes:
     """Pack a slice of a pulse train the way the receiver reports it."""

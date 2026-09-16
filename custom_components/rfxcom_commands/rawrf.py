@@ -53,7 +53,7 @@ class Command:
     """Exactly one frame plus its trailing gap, normalised. Even length."""
 
     bits: str
-    """The frame as bits, for display. Not used for transmitting."""
+    """PWM bits, or a pulse-length signature for other encodings. Not for TX."""
 
     short: int
     long: int
@@ -277,20 +277,28 @@ def decode(burst: list[bytes], *, min_frames: int = 3) -> Command:
     reference_length = max(qualifying)
     candidates = [f for f in complete if len(f) == reference_length]
 
-    decoded = {_frame_bits(f, short, long) for f in candidates}
-    if len(decoded) != 1:
+    midpoint = (short + long) / 2
+    normalised_frames = {
+        tuple(long if pulse > midpoint else short for pulse in frame)
+        for frame in candidates
+    }
+    if len(normalised_frames) != 1:
         raise RawRFError(
             "The captured frames do not agree; another 433 MHz device probably "
             "transmitted at the same time. Try again."
         )
-    bits = decoded.pop()
 
     # Rebuild from the ideal symbol lengths rather than replaying the measured
     # ones: reception jitter is not worth reproducing, and a single mis-read
     # pulse would otherwise be baked into every transmission.
     reference = candidates[0]
-    midpoint = (short + long) / 2
-    normalised = [long if p > midpoint else short for p in reference]
+    encoding = classify(reference, short, long)
+    normalised = list(normalised_frames.pop())
+    bits = (
+        _frame_bits(reference, short, long)
+        if encoding == ENCODING_PWM
+        else "".join("1" if pulse == long else "0" for pulse in normalised)
+    )
     normalised.append(gap)
     if len(normalised) % 2:
         raise RawRFError("Captured an odd number of pulses; try again")
@@ -307,7 +315,7 @@ def decode(burst: list[bytes], *, min_frames: int = 3) -> Command:
         long=long,
         gap=gap,
         frames_seen=len(candidates),
-        encoding=classify(reference, short, long),
+        encoding=encoding,
         jitter_pct=_jitter_pct(reference, short, long),
     )
 

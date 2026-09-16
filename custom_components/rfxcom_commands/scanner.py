@@ -19,7 +19,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant, callback
 
 from .capture import Capture
-from .const import MAX_SCAN_SECONDS, RECENT_CODES, ROLLING_CODES_HINT
+from .const import EVENT_RAW_COMMAND, MAX_SCAN_SECONDS, RECENT_CODES, ROLLING_CODES_HINT
 from .gateway import GatewayError, RawListener
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ class Scanner:
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
         self._task: asyncio.Task[None] | None = None
+        self._ready: asyncio.Event | None = None
         self._listeners: list[Callable[[], None]] = []
         self.last: dict[str, Any] | None = None
         self.recent: list[dict[str, Any]] = []
@@ -63,14 +64,20 @@ class Scanner:
             update()
 
     async def async_start(self) -> None:
-        if self.running:
-            return
-        self.error = None
-        self._task = self._hass.async_create_task(self._run())
-        self._notify()
+        if not self.running:
+            self.error = None
+            self._ready = asyncio.Event()
+            self._task = self._hass.async_create_task(self._run())
+            self._notify()
+        assert self._ready is not None
+        try:
+            await self._ready.wait()
+        except asyncio.CancelledError:
+            await self.async_stop()
+            raise
 
     async def async_stop(self) -> None:
-        task, self._task = self._task, None
+        task = self._task
         if task is not None and not task.done():
             task.cancel()
             try:
@@ -80,8 +87,11 @@ class Scanner:
         self._notify()
 
     async def _run(self) -> None:
+        ready = self._ready
         try:
             async with RawListener(self._hass, band=self.band) as listener:
+                if ready is not None:
+                    ready.set()
                 capture = Capture(listener)
 
                 def _rejected(reason: str) -> None:
@@ -112,12 +122,15 @@ class Scanner:
                     }
                     if not command.trustworthy:
                         self.last["warning"] = (
-                            "These bits are a mark-length reading of something "
-                            f"that looks like {command.encoding}, so they are "
-                            "probably not what the remote means. Replaying the "
-                            "pulses still works."
+                            f"This {command.encoding} signature describes pulse "
+                            "lengths, not decoded protocol bits. The captured "
+                            "pulses are used for replay."
                         )
                     self._remember(command.bits, command.frames_seen)
+                    self._hass.bus.async_fire(
+                        EVENT_RAW_COMMAND,
+                        {**self.last, "heard": self.recent[0]["heard"]},
+                    )
                     self.packets = listener.packets_seen
                     self.raw_packets = listener.raw_seen
                     self.bursts_dropped = capture.bursts_dropped
@@ -133,7 +146,10 @@ class Scanner:
             _LOGGER.exception("The scanner stopped")
             self.error = str(err)
         finally:
-            self._task = None
+            if self._task is asyncio.current_task():
+                self._task = None
+            if ready is not None:
+                ready.set()
             self._notify()
 
     @property
