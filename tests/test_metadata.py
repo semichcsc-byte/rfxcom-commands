@@ -28,6 +28,15 @@ def test_english_translation_matches_source():
     assert english == source
 
 
+def test_flow_titles_follow_current_translation_schema():
+    source = json.loads((COMPONENT / "strings.json").read_text())
+    assert "title" not in source["config"]
+    for flow in source["config_subentries"].values():
+        assert "title" not in flow
+        assert flow["entry_type"]
+        assert flow["initiate_flow"]["user"]
+
+
 def test_portuguese_keys_and_placeholders_match_source():
     source = leaves(json.loads((COMPONENT / "strings.json").read_text()))
     translated = leaves(json.loads((COMPONENT / "translations/pt.json").read_text()))

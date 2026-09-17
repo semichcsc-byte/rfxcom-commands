@@ -69,7 +69,6 @@
   },
   "config_subentries": {
     "command": {
-      "title": "Command",
       "initiate_flow": {
         "user": "Learn a command",
         "reconfigure": "Edit command"
