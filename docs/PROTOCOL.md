@@ -276,6 +276,26 @@ write. A permanently stalled transport remains a recovery risk. These controls
 and regression tests address known defects; they do not establish the cause of
 all previously observed Core freezes.
 
+## Demo screenshots
+
+The following captures use the real HA 2026.9 frontend and an isolated test
+instance, not a production installation. The learning flow receives the first
+ON burst from [the recorded fixture](../tests/fan_remote_capture.txt). Its eight
+agreeing frames yield code `0x012D93D0`:
+
+[![Real learning form displaying the recorded ON command and eight agreeing frames](images/learn-command.png)](images/learn-command.png)
+
+The scanner example consumes the recorded ON and OFF bursts. It shows eight
+RAW packets in total, two signatures and eight agreeing frames for the final
+OFF code `0x012D9323`. The scanner has stopped. Receiver band is simulated status
+metadata; none of these screenshots demonstrate live radio performance.
+
+[![Stopped scanner with recorded fan RF diagnostics and separate ON and OFF buttons](images/scanner.png)](images/scanner.png)
+
+See [the user manual](../README.md#regenerating-screenshots) for reproducible
+generation commands, and [the integration-page screenshot](images/commands.png)
+for the resulting saved commands. No production credentials or devices are used.
+
 ## References
 
 - [RFXCOM SDK](http://www.rfxcom.com/) — official packet documentation

@@ -7,6 +7,18 @@ Learn and replay RF commands with an RFXCOM and create Home Assistant buttons
 or single-code toggle switches, including for remotes outside its built-in
 protocol decoders.
 
+## Demo screenshots
+
+These screenshots show the real Home Assistant 2026.9 frontend with RFXCOM
+Commands v0.20.4 in an isolated local demo. Names are examples; signal values
+come from the recorded fan fixture. No production instance or live RF hardware
+is used to generate the images. Click an image to view it at full size.
+
+[![RFXCOM Commands integration with separate Fan OFF and Fan ON commands](docs/images/commands.png)](docs/images/commands.png)
+
+*Saved ON/OFF commands on the integration page. Each command can be edited
+independently; the Learn a command button starts a new learning flow.*
+
 ## Current status
 
 The v0.20.3 recognition fixes were verified against four real fan-remote
@@ -87,6 +99,12 @@ physical remote sent them: nearby transmitters can also produce valid frames.
 Closing the dialog cancels capture. Cleanup waits for in-flight mode writes and
 attempts to restore the original receiver configuration.
 
+[![Learning form showing an accepted fan code, eight agreeing frames, a command name and Button or Switch selection](docs/images/learn-command.png)](docs/images/learn-command.png)
+
+*Demo: the recorded ON command has been accepted and named Fan ON. Test before
+saving is unchecked. The entity-ID placeholder is the actual pre-save preview;
+it is not recomputed while typing the name.*
+
 ## Buttons and switches
 
 Use a **button** for a specific command: ON, OFF, speed up, a scene or a doorbell.
@@ -157,6 +175,12 @@ the physical receiver may not support; a 433 MHz receiver is not made into a
 315 or 868 MHz receiver by choosing an option. Cleanup attempts to restore the
 original band and protocols. If the connection fails, check settings before
 resuming normal use. Receiver-band metadata is not a measurement of the remote.
+
+[![Device page showing Fan OFF and Fan ON controls, a stopped scanner and recorded RF diagnostic readings](docs/images/scanner.png)](docs/images/scanner.png)
+
+*Demo after processing two recorded presses: two codes, eight RAW packets and
+eight agreeing frames in the last capture. The scanner is stopped; the band is
+simulated receiver metadata, not a measured carrier frequency.*
 
 ## Transmission and repeats
 
@@ -241,6 +265,24 @@ Tests run locally with simulated transports and recorded signals, not with a
 production HA or a live transmitter. CI runs tests, HACS validation and hassfest.
 Technical details are in [docs/PROTOCOL.md](docs/PROTOCOL.md); release notes are
 on [GitHub Releases](https://github.com/semichcsc-byte/rfxcom-commands/releases).
+
+### Regenerating screenshots
+
+The optional [screenshot generator](tools/make_screenshots.py) uses the real
+frontend, the existing test fixtures and an ephemeral local HTTP server. Run it
+in a separate development environment, not on your production HA installation:
+
+```sh
+python3.14 -m venv .venv-dev
+.venv-dev/bin/python -m pip install -r requirements_test.txt home-assistant-frontend==20260826.4 playwright==1.55.0
+.venv-dev/bin/python -m playwright install chromium
+.venv-dev/bin/python -m pytest tools/make_screenshots.py
+```
+
+Images are written to `docs/images/`. Browser requests are restricted to the
+local demo server, and no serial transport is opened. The generator learns an
+example from recorded packets without pressing any transmit controls. It is
+not part of the normal test run and requires no credentials from a real HA.
 
 ## Licence
 

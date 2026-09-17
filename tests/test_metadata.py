@@ -2,6 +2,7 @@
 
 import json
 import re
+import struct
 from pathlib import Path
 from string import Formatter
 from urllib.parse import unquote, urlsplit
@@ -75,3 +76,14 @@ def test_manual_links_and_headings(relative):
             assert (document.parent / unquote(parsed.path)).exists(), target
         elif parsed.fragment:
             assert parsed.fragment in anchors, target
+
+
+@pytest.mark.parametrize("name", ["commands.png", "learn-command.png", "scanner.png"])
+def test_demo_screenshots_are_publishable_pngs(name):
+    image = (ROOT / "docs" / "images" / name).read_bytes()
+    assert image[:8] == b"\x89PNG\r\n\x1a\n"
+    assert image[12:16] == b"IHDR"
+    width, height = struct.unpack(">II", image[16:24])
+    assert 500 <= width <= 2000
+    assert 500 <= height <= 1600
+    assert 10000 <= len(image) <= 1000000
