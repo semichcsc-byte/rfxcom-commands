@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
@@ -182,6 +183,85 @@ async def test_queue_is_bounded(hass: HomeAssistant, rfxtrx) -> None:
         await asyncio.sleep(0)
 
         assert listener._queue.qsize() == gateway.QUEUE_SIZE
+
+
+async def test_raw_flood_is_bounded_before_the_event_loop_runs(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    async with RawListener(hass) as listener:
+        loop = asyncio.get_running_loop()
+        scheduled = Mock(wraps=loop.call_soon_threadsafe)
+        with monkeypatch.context() as patch:
+            patch.setattr(loop, "call_soon_threadsafe", scheduled)
+            for _packet in range(gateway.QUEUE_SIZE * 100):
+                rfxtrx.transport.parse(RAW_PACKET)
+        assert scheduled.call_count <= 1
+        assert listener._queue.qsize() == gateway.QUEUE_SIZE
+        assert listener.packets_dropped == gateway.QUEUE_SIZE * 99
+
+
+async def test_receive_overflow_stops_capture_and_restores_protocols(
+    hass: HomeAssistant, rfxtrx
+) -> None:
+    with pytest.raises(GatewayError, match="buffer overflowed"):
+        async with RawListener(hass) as listener:
+            for _packet in range(gateway.QUEUE_SIZE + 1):
+                rfxtrx.transport.parse(RAW_PACKET)
+            await listener.next_packet(0.1)
+    assert len(rfxtrx.transport.sent) == 2
+    assert "parse" not in vars(rfxtrx.transport)
+    assert listener._queue.empty()
+
+
+async def test_packet_from_reader_thread_is_received(
+    hass: HomeAssistant, rfxtrx
+) -> None:
+    async with RawListener(hass) as listener:
+        await hass.async_add_executor_job(rfxtrx.transport.parse, RAW_PACKET)
+        assert await listener.next_packet(0.1) == RAW_PACKET
+
+
+async def test_stale_hook_cannot_enqueue_after_capture_closes(
+    hass: HomeAssistant, rfxtrx
+) -> None:
+    async with RawListener(hass) as listener:
+        hook = rfxtrx.transport.parse
+    await hass.async_add_executor_job(hook, RAW_PACKET)
+    assert listener._queue.empty()
+
+
+async def test_scanner_survives_reader_thread_flood(
+    hass: HomeAssistant, rfxtrx
+) -> None:
+    scanner = Scanner(hass)
+    await scanner.async_start()
+    task = scanner._task
+    hook = rfxtrx.transport.parse
+    ticks = 0
+
+    async def heartbeat():
+        nonlocal ticks
+        while scanner.running:
+            ticks += 1
+            await asyncio.sleep(0)
+
+    def flood():
+        for _packet in range(gateway.QUEUE_SIZE * 100):
+            hook(RAW_PACKET)
+
+    beat = asyncio.create_task(heartbeat())
+    try:
+        await hass.async_add_executor_job(flood)
+        await asyncio.wait_for(asyncio.shield(task), 2)
+        assert scanner.error is not None
+        assert "buffer overflowed" in scanner.error
+        assert ticks > 0
+        assert not scanner.running
+        assert len(rfxtrx.transport.sent) == 2
+        assert "parse" not in vars(rfxtrx.transport)
+    finally:
+        await scanner.async_stop()
+        await beat
 
 
 async def test_a_bad_packet_does_not_break_the_reader(

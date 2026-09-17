@@ -23,6 +23,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from queue import Empty, Queue
+from threading import Lock
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
@@ -35,11 +37,10 @@ _LOGGER = logging.getLogger(__name__)
 # Long enough for the firmware to apply a mode change and answer with a status.
 MODE_SETTLE = 1.0
 
-# Raw mode reports every RF transmission in earshot. A capture only ever needs
-# the last few packets, so a bounded queue that drops the oldest is both
-# sufficient and the only thing standing between a noisy band and an
-# ever-growing backlog.
+# Bound the buffer on the reader thread, before any event-loop work is queued.
+# Overflow aborts capture rather than assembling a signal from missing packets.
 QUEUE_SIZE = 64
+QUEUE_POLL_INTERVAL = 0.01
 
 
 class GatewayError(Exception):
@@ -230,7 +231,10 @@ class RawListener:
         self._original_parse: Callable[[Any], Any] | None = None
         self._had_instance_parse = False
         self._capture_lock: asyncio.Lock | None = None
-        self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=QUEUE_SIZE)
+        self._queue: Queue[bytes] = Queue(maxsize=QUEUE_SIZE)
+        self._buffer_lock = Lock()
+        self._accepting = False
+        self.packets_dropped = 0
         self._loop = asyncio.get_running_loop()
         # Counted so a failed capture can say which of the two things went
         # wrong: nothing arrived, or the device never went into raw mode.
@@ -302,10 +306,7 @@ class RawListener:
         original = transport.parse
         self._had_instance_parse = "parse" in vars(transport)
 
-        def _queue(packet: bytes) -> None:
-            if self._queue.full():
-                self._queue.get_nowait()  # drop the oldest; a capture wants the newest
-            self._queue.put_nowait(packet)
+        self._accepting = True
 
         def _parse(data: Any) -> Any:
             try:
@@ -313,7 +314,12 @@ class RawListener:
                 self.packets_seen += 1
                 if len(packet) >= 6 and packet[1] == 0x7F:
                     self.raw_seen += 1
-                    self._loop.call_soon_threadsafe(_queue, packet)
+                    with self._buffer_lock:
+                        if self._accepting:
+                            if self._queue.full():
+                                self.packets_dropped += 1
+                            else:
+                                self._queue.put_nowait(packet)
             except Exception:  # noqa: BLE001 - a bad capture must not kill the reader
                 _LOGGER.debug("Ignoring malformed packet", exc_info=True)
             return original(data)
@@ -323,6 +329,10 @@ class RawListener:
         self._original_parse = original
 
     def _remove_hook(self) -> None:
+        with self._buffer_lock:
+            self._accepting = False
+            while not self._queue.empty():
+                self._queue.get_nowait()
         if self._transport is None:
             return
         if self._had_instance_parse:
@@ -334,7 +344,17 @@ class RawListener:
 
     async def next_packet(self, timeout: float) -> bytes | None:
         """Wait for one raw packet, or None if nothing arrives in time."""
-        try:
-            return await asyncio.wait_for(self._queue.get(), timeout)
-        except TimeoutError:
-            return None
+        deadline = self._loop.time() + timeout
+        while True:
+            if self.packets_dropped:
+                raise GatewayError(
+                    "RAW capture stopped because the receive buffer overflowed. "
+                    "The receiver is producing packets faster than they can be processed."
+                )
+            try:
+                return self._queue.get_nowait()
+            except Empty:
+                remaining = deadline - self._loop.time()
+                if remaining <= 0:
+                    return None
+                await asyncio.sleep(min(QUEUE_POLL_INTERVAL, remaining))

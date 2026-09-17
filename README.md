@@ -8,6 +8,18 @@ for each one — including remotes the RFXCOM cannot decode.
 
 ## Read this before installing
 
+**A further production freeze occurred on 17 September 2026 with v0.20.1,
+after the scanner had been enabled. The Supervisor watchdog restarted Core.
+The cause has not been confirmed; keep this integration disabled on that
+instance until the failure is understood.**
+
+An offline regression test found that the receive queue was bounded only after
+one callback per packet had already been scheduled on Home Assistant's event
+loop. The reader now writes directly to a bounded thread-safe buffer, without
+per-packet callbacks. If that buffer fills, capture stops with an explicit error
+and attempts to restore the previous receive protocols. Tests cover a reader
+thread flooding the scanner, but do not prove this caused the production freeze.
+
 **The learning flow took a production Home Assistant down three times, and while
 a mechanism that would do exactly that has since been found and fixed, it has
 not been confirmed as the cause.**
