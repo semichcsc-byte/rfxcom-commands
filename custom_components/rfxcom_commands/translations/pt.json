@@ -5,7 +5,7 @@
         "name": "Código rotativo",
         "state": {
           "unknown_yet": "Carrega mais umas vezes no botão",
-          "no": "Não, um código repetiu-se",
+          "no": "Um código repetiu-se (não conclusivo)",
           "maybe": "Parece que sim"
         }
       }
@@ -14,7 +14,7 @@
   "services": {
     "watch": {
       "name": "Ver o que anda no ar",
-      "description": "Põe o RFXCOM à escuta em modo raw e mostra todos os comandos que ouvir, mesmo os que ele normalmente não sabe descodificar. Cada um dispara também um evento rfxcom_commands_raw à medida que chega, para o veres ao vivo em Ferramentas de programador, Eventos. Enquanto isto corre o RFXCOM não descodifica mais nada.",
+      "description": "Escuta em modo RAW e apresenta as capturas aceites. Cada captura aceite dispara um evento rfxcom_commands_raw. Sinais incompletos ou não suportados podem ser recebidos sem produzir um código. A descodificação dos protocolos normais é interrompida durante a captura.",
       "fields": {
         "seconds": {
           "name": "Escutar durante",
@@ -27,7 +27,7 @@
     "kind": {
       "options": {
         "button": "Botão - carregas e o comando é enviado uma vez",
-        "switch": "Interruptor - o botão do comando liga e desliga"
+        "switch": "Interruptor - um único código RF alterna entre ligado e desligado"
       }
     }
   },
@@ -47,7 +47,7 @@
     "step": {
       "init": {
         "title": "Ver o que anda no ar",
-        "description": "Fica à escuta de tudo o que estiver ao alcance e mostra cada comando que ouvir, mesmo os que o RFXCOM normalmente não sabe descodificar.\n\nServe para saber se um comando está sequer a ser ouvido, se dois botões enviam mesmo códigos diferentes, e se há algo por perto a transmitir por cima.\n\nEnquanto isto corre o RFXCOM não descodifica mais nada.",
+        "description": "Apresenta capturas RAW aceites e contagens de pacotes durante uma janela limitada. Um sinal recebido pode ser rejeitado se as tramas forem incompletas, inconsistentes ou não suportadas.\n\nA descodificação normal é interrompida durante a escuta. Termina primeiro qualquer outra sessão de scanner ou aprendizagem.",
         "data": {
           "seconds": "Escutar durante"
         }
@@ -82,7 +82,7 @@
         },
         "name": {
           "title": "Dar nome ao comando",
-          "description": "Capturado `{hex}`\n\n`{bits}`\n\n{quality}. O teu comando enviou-o {frames} vezes seguidas, todas concordantes, e vai ser reproduzido exatamente esse número de vezes.\n\nA entidade vai ser criada como `{entity_id}`.\n\nMarca Testar para o transmitir e confirmar que faz o que deve. Nada é guardado enquanto essa caixa estiver marcada.",
+          "description": "Capturado `{hex}`\n\n`{bits}`\n\n{quality}. Foram encontradas {frames} tramas concordantes. A transmissão usa essa contagem, limitada a dez; a captura pode ser mais curta do que a pressão completa.\n\nA entidade vai ser criada como `{entity_id}`.\n\nMarca Testar para transmitir e observar o aparelho. Nada é guardado enquanto Testar estiver marcado.",
           "data": {
             "name": "Nome",
             "kind": "Entidade",
@@ -90,7 +90,7 @@
             "test": "Testar antes de guardar"
           },
           "data_description": {
-            "kind": "Escolhe Interruptor quando o botão do comando liga e desliga a mesma coisa. O aparelho não dá resposta nenhuma, por isso o interruptor guarda apenas o que pediu da última vez."
+            "kind": "Usa Interruptor apenas se o mesmo código RF alternar nos dois sentidos. Códigos distintos de ligar e desligar precisam de dois botões. O estado é assumido; pedidos repetidos de ligar ou desligar continuam a transmitir."
           }
         },
         "reconfigure": {

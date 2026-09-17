@@ -161,10 +161,8 @@ class Scanner:
     def looks_like_rolling(self) -> bool:
         """Several codes from one address, none of them ever repeating.
 
-        That is the signature of a rolling code, which cannot be replayed by
-        anyone. It is only an indication: a remote with an alternating bit
-        gives two codes and is perfectly replayable, so this never decides
-        anything on the user's behalf.
+        This is a heuristic, not a protocol classification. Separate commands,
+        alternating bits and unrelated transmitters can produce similar results.
         """
         return (
             len(self.recent) >= ROLLING_CODES_HINT

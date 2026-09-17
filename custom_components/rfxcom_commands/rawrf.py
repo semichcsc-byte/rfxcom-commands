@@ -1,15 +1,16 @@
 """Decoding and encoding of RFXCOM raw RF packets (packet type 0x7F).
 
 Deliberately free of Home Assistant imports: `tools/rfx_capture.py` reuses this
-module, and it is the only part of the integration that is worth unit testing.
+module for offline analysis of recorded packets.
 
 An RFXtrx in raw mode reports one button press as a *burst* of up to four
 packets, each holding a slice of the pulse train:
 
     <len> 7F <index 0..3> <seq> <flag> <pulse pairs, 16-bit big-endian>
 
-`flag` is 0 while more packets follow and 1 on the last one. On transmit the
-same byte carries the repeat count (1..10) and is only set on the final packet.
+`flag` is 0 while more packets follow and 1 on the last one; capacity-limited
+captures also end at index 3 with flag zero. On transmit the same byte carries
+the repeat count (1..10) and is only set on the final packet.
 Pulse durations are microseconds; a pulse train alternates mark and space.
 """
 

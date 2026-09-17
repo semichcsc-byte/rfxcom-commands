@@ -152,9 +152,8 @@ class LastEncodingSensor(ScannerSensor):
 class DistinctCodesSensor(ScannerSensor):
     """How many different codes this scan has heard.
 
-    Read together with `repeating`: several codes from one address that never
-    repeat is what a rolling code looks like, and a rolling code cannot be
-    replayed by anything.
+    Read together with `repeating`: this is a bounded signature history, not
+    a protocol identification or a guarantee that replay will work.
     """
 
     _attr_name = "Codes heard"
@@ -175,12 +174,10 @@ class DistinctCodesSensor(ScannerSensor):
         }
         if scanner.looks_like_rolling:
             attributes["note"] = (
-                "Several codes from one address, none of them repeating. That "
-                "is what a rolling code looks like, and a rolling code cannot "
-                "be replayed by anything, so learning one would produce a "
-                "button that does nothing. It is only an indication: a remote "
-                "with an alternating bit also sends more than one code and is "
-                "perfectly replayable."
+                "Several signatures share a prefix and none has repeated. "
+                "This may indicate rolling codes, separate commands, an "
+                "alternating bit or unrelated transmitters. This observation "
+                "does not identify a protocol or establish replay compatibility."
             )
         return attributes
 

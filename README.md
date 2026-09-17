@@ -3,305 +3,245 @@
 [![Validate](https://github.com/semichcsc-byte/rfxcom-commands/actions/workflows/validate.yml/badge.svg)](https://github.com/semichcsc-byte/rfxcom-commands/actions/workflows/validate.yml)
 [![HACS custom](https://img.shields.io/badge/HACS-custom-41BDF5.svg)](https://hacs.xyz)
 
-Learn 433 MHz remotes with an RFXCOM and get a Home Assistant button or switch
-for each one — including remotes the RFXCOM cannot decode.
+Learn and replay RF commands with an RFXCOM and create Home Assistant buttons
+or single-code toggle switches, including for remotes outside its built-in
+protocol decoders.
 
-## Read this before installing
+## Current status
 
-**A further production freeze occurred on 17 September 2026 with v0.20.1,
-after the scanner had been enabled. The Supervisor watchdog restarted Core.
-The cause has not been confirmed; keep this integration disabled on that
-instance until the failure is understood.**
+The v0.20.3 recognition fixes were verified against four real fan-remote
+captures. USB replay tests confirmed separate ON and OFF commands, and the
+owner reported successful operation after installing v0.20.3 in Home Assistant
+on 17 September 2026. The test suite covers those captures and the learning flow.
 
-An offline regression test found that the receive queue was bounded only after
-one callback per packet had already been scheduled on Home Assistant's event
-loop. The reader now writes directly to a bounded thread-safe buffer, without
-per-packet callbacks. If that buffer fills, capture stops with an explicit error
-and attempts to restore the previous receive protocols. Tests cover a reader
-thread flooding the scanner, but do not prove this caused the production freeze.
+Earlier releases experienced Core freezes, including an incident after the
+v0.20.1 scanner was enabled. Fixes cover cancellation, exclusive capture access,
+complete-command transmission, event-loop yielding and a bounded thread-safe
+receive buffer. **The original freezes have not been conclusively attributed
+to those defects; successful functional tests are not a long-term stability
+guarantee.**
 
-**The learning flow took a production Home Assistant down three times, and while
-a mechanism that would do exactly that has since been found and fixed, it has
-not been confirmed as the cause.**
+Keep a current Home Assistant backup. Raw capture temporarily interrupts normal
+RF protocol decoding. If Home Assistant becomes unresponsive, stop testing on
+that instance and use [offline capture](#offline-capture). It runs outside Core,
+but still changes the receiver mode temporarily.
 
-The symptom was that Home Assistant stopped responding entirely a short while
-after a capture: the port still accepted TCP connections but nothing was served,
-while the host itself stayed healthy and the Supervisor eventually restarted
-Core. It needed a manual reboot each time.
+## Requirements
 
-What was found: the capture loop awaited a queue, and awaiting a queue that
-already holds an item never reaches the event loop. Home Assistant runs
-everything on one loop, so a capture over a busy band could freeze it outright.
-[tests/test_event_loop.py](tests/test_event_loop.py) reproduces it — without the
-fix the loop gets zero cycles for the whole capture window — and the fix is a
-yield on every iteration.
+- Home Assistant **2026.9 or newer**, the tested baseline. Older releases are
+  not supported.
+- The built-in **RFXCOM RFXtrx** integration configured and connected.
+- A receiver and firmware supporting RAW reception and transmission. Verified
+  with an **RFX-433EMC, hardware 4.1**; other variants are not guaranteed.
+- A remote on a band supported by that receiver. These tests used 433 MHz RF.
 
-What is still unproven: whether that alone explains the outages. One of them
-happened with this integration disabled, which no fix here can account for.
+This integration borrows the native integration's connection. It never opens a
+second serial reader. Raw mode reports pulse timings, not carrier frequency or
+signal strength. Supported hardware bands cannot be expanded by software.
 
-Two of the three outages were caused by defects that no longer exist, and the
-test suite now covers the paths involved. Even so, **treat this as experimental
-on a Home Assistant you depend on.** The capture and decoding logic in
-[tools/rfx_capture.py](tools/rfx_capture.py) runs outside Home Assistant and
-carries none of this risk — if you only want to read a remote, start there.
+## Installation
 
-## Why this exists
+### HACS
 
-The RFXCOM integration works from a list of known protocols. Point a remote at
-it that speaks something else and the best you get is an `Undecoded` event with
-a couple of bytes in it, which is not enough to identify the button, let alone
-reproduce it.
+1. Open HACS and its **Custom repositories** menu.
+2. Add `https://github.com/semichcsc-byte/rfxcom-commands` as **Integration**.
+3. Find **RFXCOM Commands** and download the release.
+4. Restart Home Assistant.
+5. In **Settings > Devices & services > Add integration**, add **RFXCOM Commands**.
 
-The device can do better. RFXtrx firmware has a raw mode that reports the
-actual pulse timings, and a matching transmit packet that plays arbitrary
-timings back. That is the same capture-and-replay trick a Broadlink uses, and
-it works on remotes no protocol decoder recognises. It is just not exposed
-anywhere: no Home Assistant UI, and the Python library the integration uses
-throws the packets away before they reach an event.
+The native RFXCOM RFXtrx integration must already be working. Adding this
+integration does not start a scan or transmit a command.
 
-This integration turns that raw mode into a learning flow. Press a button, get
-an entity.
+### Manual installation
 
-## What you need
+Place the repository's `custom_components/rfxcom_commands` directory under the
+Home Assistant configuration directory, then restart Home Assistant. The final
+path must be `config/custom_components/rfxcom_commands/manifest.json`.
 
-- Home Assistant 2025.3 or newer
-- The built-in **RFXCOM RFXtrx** integration already set up and working
-- An RFXtrx433 (any variant) or RFX-433EMC
+### Updating and recovery
 
-The serial port takes a single reader, so this integration never opens its own
-connection. It borrows the one the core integration already has. If RFXCOM is
-not set up, this will tell you so and stop.
+Download the new version through HACS and restart Home Assistant. Reloading an
+integration does not guarantee that imported Python modules have been replaced.
+Confirm the installed version in HACS and check the integration's startup status.
 
-## Install
+An update does not automatically enable a disabled integration. To isolate a
+problem, disable **RFXCOM Commands** in Devices & services; this is separate from
+the native **RFXCOM RFXtrx** integration. Preserve logs before restarting an
+unresponsive instance. Reinstalling an earlier release through HACS also requires
+a restart and is not a guarantee that an older version is safer.
 
-### With HACS
+## Learning a command
 
-1. Open **HACS**
-2. Top right **⋮** → **Custom repositories**
-3. Repository: `https://github.com/semichcsc-byte/rfxcom-commands`
-4. Type: **Integration** → **Add**
-5. Search HACS for *RFXCOM Commands*, open it, press **Download**
-6. Restart Home Assistant
+1. Open the integration page and select **Learn a command**.
+2. Submit the initial form, then press the desired remote button near the receiver.
+3. When accepted, name the command, choose **Button** or **Switch**, and an area.
+4. Optionally select **Test before saving**. This transmits RF and can operate
+   the appliance. Observe the result directly.
+5. Submit with the test option unchecked to save the entity.
 
-### Without HACS
+The capture window lasts up to 20 seconds. Acceptance requires at least three
+agreeing frames in a packet group. One physical press can contain enough
+repetitions. Agreement reduces corrupted captures but does not identify which
+physical remote sent them: nearby transmitters can also produce valid frames.
 
-Copy the `custom_components/rfxcom_commands` folder into your Home Assistant
-`config/custom_components/` folder, so you end up with
-`config/custom_components/rfxcom_commands/manifest.json`. Restart Home
-Assistant.
+Closing the dialog cancels capture. Cleanup waits for in-flight mode writes and
+attempts to restore the original receiver configuration.
 
-## Set up
+## Buttons and switches
 
-Go to **Settings → Devices & services → Add integration** and search for
-**RFXCOM Commands**. There is nothing to configure — it finds your RFXCOM
-integration by itself.
+Use a **button** for a specific command: ON, OFF, speed up, a scene or a doorbell.
 
-## Learn a command
+Use a **switch** only when the same RF code toggles the appliance in both
+directions. Both actions transmit that one code. Its state is assumed and
+restored after a restart; it is not feedback from the appliance. Repeated ON or
+OFF calls still transmit, even when the displayed state already matches. Such a
+switch is not suitable for automations that require idempotent ON/OFF actions.
 
-On the integration's page, press **Learn a command**, then press the button on
-your remote, within a few metres of the RFXCOM.
+### Fan with separate ON and OFF codes
 
-One press is enough, and the dialog closes as soon as it has the command. A
-remote does not send its code once: a single press carries the same frame four
-or so times over, and the capture is only accepted when those repeats agree
-with each other. That is what separates a real command from a neighbour's
-doorbell, and it is why nothing more is asked of you. If the press was missed,
-it keeps listening for twenty seconds — press again.
+One physical button can alternate two commands. The captured fan remote does
+this, and USB tests confirmed their effects:
 
-Then name the command, choose whether it should be a **button** or a
-**switch**, and pick an area. Tick **Test before saving** to transmit it and
-check it does the right thing; nothing is saved until you leave that box
-unticked, so try as often as you like.
+| Action | Captured code | Agreeing frames |
+|---|---|---|
+| ON | `000001001011011001001111010000` | 8 |
+| OFF | `000001001011011001001100100011` | 8 |
 
-Each command you save becomes an entity, grouped under the gateway.
+Learn these as **two buttons**, one per action. The current single-code switch
+does not combine separate ON and OFF codes. These codes belong to the tested
+remote, not a universal fan command. Capture data and observations are in
+[the protocol notes](docs/PROTOCOL.md).
 
-## Button or switch
+## Scanner and watch
 
-Pick **button** when the remote's button does one thing: a doorbell, a scene,
-"fan up".
+The **Scanner** switch starts live RAW reception. Accepted captures update the
+sensors and emit an `rfxcom_commands_raw` event. Rejected signals may increase
+the packet counters without producing a decoded code.
 
-Pick **switch** when the remote's button toggles something on and off, which is
-what most ceiling fan lights do. There is only one code, so both buttons send
-the same thing; the switch just remembers which way it last asked for. It has
-no way to know what actually happened, so it is marked as assumed state. If it
-drifts out of step — someone used the physical remote, or a transmission was
-lost — press it again. It always transmits, even when the state already looks
-right, because that is the only way back.
-
-Some remotes alternate separate ON and OFF codes behind one physical button.
-The fan remote captured in `tests/fan_remote_capture.txt` does this: replay
-tests confirmed one code starts the fan and the other stops it. Learn these
-as two **buttons**, one for each action. The current single-code switch cannot
-represent a device that needs different ON and OFF commands.
-
-## The scanner
-
-Turn on **Scanner** on the integration's device page and watch the sensors:
-every command the RFXCOM hears appears there the moment it arrives, decodable
-by the RFXCOM or not. Press buttons on your remote and read them off.
-
-| Sensor | |
+| Sensor | Meaning |
 |---|---|
-| **Last code hex** | the code in the form everyone else quotes |
-| **Last code** | the same thing as bits |
-| **Last code repeats** | how many times the remote sent it, which is how it will be replayed |
-| **Last code jitter** | how far the pulses sat from their ideal lengths; a few percent is clean, a large figure is a receiver straining on a distant or off-frequency remote |
-| **Last code encoding** | `pwm`, `ppm`, `manchester` or `unknown`. Only `pwm` is decoded; other codes are pulse-length signatures, not protocol bits |
-| **Receiver band** | the band your RFXtrx is tuned to |
+| Last code hex | Accepted bits or signature expressed in hexadecimal |
+| Last code | PWM bits, or a pulse-length signature for other encodings |
+| Last code repeats | Number of agreeing frames in the accepted capture |
+| Last code jitter | Deviation from the estimated short and long durations |
+| Last code encoding | Heuristic classification: `pwm`, `ppm`, `manchester`, `unknown` |
+| Signals heard | RAW packet count; attributes include rejection count and last reason |
+| Codes heard | Distinct signatures in the bounded recent-code list |
+| Rolling code | Repetition heuristic, not protocol identification |
+| Receiver band | Band reported by the connection's cached receiver status |
 
-**Receiver band** is the receiver's own fixed frequency, not a measurement of
-anything received. It cannot be one: the RFXtrx has no tuner readout, and raw
-packets carry pulse timings and nothing else — no frequency, no signal
-strength. What a remote actually transmits on cannot be known from here. It is
-worth showing anyway, because a remote sitting a little off this band is the
-usual reason a command is heard perfectly but not obeyed.
+The **Last code** attributes include pulse durations, frame and burst durations,
+inverted signature, packet counts and recent codes. `address` is the common
+prefix of recent signatures, not a verified device address. `bursts_dropped`
+counts incomplete or out-of-order packet groups. Recent codes remain in memory
+between scans until the integration reloads, so they can span different remotes.
 
-**Scan band** moves the receiver somewhere else for the duration of a scan —
-868 MHz for a weather station, 315 MHz for an American remote — and puts it
-back when the scanner stops. The band belongs to the whole device, so leaving
-it moved would take the core integration's own devices off the air; it is only
-settable while the scanner is stopped, and never left where it was put.
+Only PWM bits are decoded. Other signatures include both marks and spaces to
+distinguish pulse patterns; they are not protocol payload bits. Transmission
+uses normalized pulse durations, not the displayed signature.
 
-Whether a given RFXtrx accepts a given band depends on its hardware, and the
-device is not asked in advance. If a band does nothing, that is your answer.
+Scanner, learning and **Configure / watch** share one exclusive capture session.
+Stop the current session before starting another. The scanner stops after at
+most 10 minutes, or sooner after 2,000 packets, overflow, cancellation or error.
+Its `error` attribute retains startup or runtime failures. Normal protocol
+decoding is interrupted during RAW capture, even though the serial connection
+stays open.
 
-**Last code**'s attributes carry the reference detail: `inverted` (the same
-pulses at the opposite polarity, for matching against protocol tables),
-`short_us`/`long_us`/`gap_us`, `frame_us` and `burst_us` (how long one frame
-and the whole press occupy the air), `address` (what every code heard has in
-common — each entry in `recent` carries the `button` part that differs),
-`recent` itself, and `bursts_dropped`, which is how you tell a quiet band from
-a crowded one.
+**Configure** offers a bounded watch window and a written report. The
+`rfxcom_commands.watch` action returns structured data and also emits events.
+Its duration is 1 to 120 seconds, default 30. A transmit ACK is not a received
+remote event and does not confirm the appliance's state.
 
-Put it on a dashboard, or use `rfxcom_commands_raw` as an automation trigger:
-one is fired per command as it is decoded.
+**Scan band** requests a temporary band change. The library lists types that
+the physical receiver may not support; a 433 MHz receiver is not made into a
+315 or 868 MHz receiver by choosing an option. Cleanup attempts to restore the
+original band and protocols. If the connection fails, check settings before
+resuming normal use. Receiver-band metadata is not a measurement of the remote.
 
-For non-PWM signals, the signature includes both marks and spaces so different
-commands remain distinguishable. Learning checks that complete normalised
-frames agree, including their spaces; transmission uses the captured pulse
-lengths, not the displayed signature. Relearn non-PWM commands captured with
-older versions if they do not behave correctly: their saved pulses cannot be
-revalidated without a new capture.
+## Transmission and repeats
 
-The RFXCOM decodes nothing else while the scanner is on, so it switches itself
-off after ten minutes. **Configure** on the integration page does the same
-thing for a fixed window and hands back a written summary, and the
-**RFXCOM Commands: watch** action does it as structured data.
+Learned commands use the number of agreeing captured frames, capped at ten.
+Capacity-limited reception can omit part of a physical press, so this count is
+not necessarily the remote's full burst length. The learning UI has no repeat
+setting. The fan ON/OFF tests succeeded with eight repeats.
 
-Scanner, learning and watch share one exclusive capture session. Stop the
-current session before starting another. Cancelling also waits for in-flight
-mode writes and protocol restoration to finish before releasing the receiver.
-Scanner startup failures are returned by the switch action and retained in its
-`error` attribute.
+More repeats are not necessarily better: some appliances may treat them as
+multiple presses. Concurrent sends from this integration are serialized as
+complete commands. Cancelling a send already in progress waits for its remaining
+packets; it does not retract an RF transmission. Direct native `rfxtrx.send`
+calls made outside this integration are not covered by that command-level lock.
 
-## Repeats
+## Editing commands
 
-A remote does not send its code once: it sends the same frame several times in
-a row, and the count is part of what it sends. A command is replayed exactly
-that many times, and there is nothing to configure.
+Open a saved command to rename it, change its area, test it or capture it again.
+Renaming and moving preserve the entity ID. Changing Button to Switch or the
+reverse replaces the entity; update dashboards and automations that reference it.
+**Test it now** transmits without saving while checked.
 
-Sending more is not "stronger". A receiver that counts presses rather than
-coalescing a burst reads a longer burst as several presses, and on a toggle
-that undoes itself. The only burst length known to work with a given remote is
-the one that remote uses.
+## Troubleshooting
 
-The scanner shows the count for every code it hears, so you can see what your
-own remote does.
+| Symptom | What to check |
+|---|---|
+| No packets | Receiver connection, remote battery, distance and supported RF band |
+| Packets but no RAW | Firmware RAW support and mode selection |
+| Only one usable frame | Use v0.20.3 or newer; if it persists, preserve a raw capture. It may be incomplete reception or unsupported framing |
+| Frames disagree | Interference, reception errors or unsupported structure; do not bypass validation |
+| Buffer overflow | Capture stops and attempts restoration. Investigate with short offline captures |
+| Command acknowledged but no effect | Separate ON/OFF semantics, range, antenna, band compatibility and captured waveform |
+| Switch state differs from appliance | State is assumed; physical remote presses and missed sends can cause drift |
+| Already listening | Stop the scanner or close the other learning/watch session |
 
-### What happens behind the scenes
+The **Rolling code** sensor cannot prove replay compatibility. A repeated
+signature does not rule out rolling codes; changing signatures can be separate
+ON/OFF commands, an alternating bit, or unrelated transmitters. This integration
+does not implement rolling-code synchronization or pairing. Likewise, lack of
+response alone does not diagnose a rolling-code remote.
 
-Raw reporting is only active when every receive protocol is enabled, so
-learning switches them all on, captures, and then puts your previous selection
-back. The change is written straight to the open connection, so your RFXCOM
-keeps running throughout — no reload, no gap in coverage.
+For a report, include receiver model/firmware, HA and integration versions,
+the exact error and a raw log from a short isolated capture. RF recordings may
+contain identifiers or commands for nearby devices; inspect them before sharing.
 
-Nothing about your normal protocol list changes permanently, and transmitting
-does not depend on it — once a command is learned, its button works with your
-usual protocols active.
+## Offline capture
 
-Concurrent transmissions from this integration are queued as complete commands,
-so their packets cannot interleave. Cancelling a transmission that has started
-waits for its remaining packets; it does not interrupt the radio burst.
+Connect the receiver to the computer running the tool. It needs exclusive
+access to that serial port. Moving it from the HA host interrupts HA's RF
+connection, but does not require stopping the entire HA instance.
 
-## Edit a command
-
-Open the command from the integration's page.
-
-Renaming it or moving it to another area keeps the same entity, so dashboards,
-automations and scripts carry on working. Changing it between a button and a
-switch does replace the entity. Tick **Capture the command again** to recapture
-and keep everything else, or **Test it now** to fire it and see what happens.
-
-## If something does not work
-
-**Nothing gets captured.** Hold the remote closer, within a metre or so, and
-hold the button down rather than tapping it. Check the batteries. If your
-remote is 315 MHz or 868 MHz, an RFXtrx433 will never hear it.
-
-**The button works sometimes.** This is the common one. The RFXtrx transmits on
-433.92 MHz and many remotes sit slightly off that — 433.83 is typical. Cheap
-receivers have a narrow enough filter that the difference matters, and you get
-an intermittent link. The fix is physical: move the RFXCOM closer to the
-device, or reorient its antenna.
-**The button does nothing at all.** Learn it again. If a second capture
-produces the same bits and still does nothing, the remote is probably using
-rolling codes, which cannot be replayed by anyone.
-
-**Learning says the frames disagree.** Something else transmitted at the same
-moment. Just try again.
-
-## What this cannot do
-
-- **Read state.** A learned command transmits; it never knows what happened.
-  For a toggle-only remote, Home Assistant cannot tell whether the light ended
-  up on or off. A switch keeps track of what it asked for, which is the best
-  any one-way remote allows; accept that it and the light can drift apart.
-- **Rolling codes.** Anything that changes its transmission between presses —
-  most car remotes, most garage doors, KeeLoq — is replay-proof by design, and
-  no recorder reproduces one. Turn on the scanner, press the same button a few
-  times, and read **Rolling code**:
-
-  | | |
-  |---|---|
-  | Press the button a few more times | not enough heard to say either way |
-  | No, a code repeated | a fixed code — safe to learn |
-  | Looks like it | several codes from one address, none repeating |
-
-  The last one is an indication, not a verdict: a remote with an alternating
-  bit also sends more than one code and replays perfectly.
-- **Hear its own transmissions.** Useful to know: pressing a button here will
-  not fire an `rfxtrx_event`, so you cannot use that to confirm a send.
-
-## How it works
-
-The technical detail — the raw packet format, how the frames are decoded, and
-how this was worked out — is in [docs/PROTOCOL.md](docs/PROTOCOL.md).
-
-There is also a standalone script for capturing and decoding outside Home
-Assistant, which is handy for debugging:
-
-```
-python3 tools/rfx_capture.py --log home-assistant.log
-python3 tools/rfx_capture.py --port /dev/ttyUSB0 --seconds 30
+```sh
+python3 -m pip install pyserial pyRFXtrx
+python3 -m serial.tools.list_ports -v
+python3 tools/rfx_capture.py --port /dev/ttyUSB0 --seconds 30 --save-log capture.log
+python3 tools/rfx_capture.py --log capture.log --raw-only
 ```
 
-It prints what RFXmngr prints — the packet type and the **HA code** for every
-decoded packet, ready to paste into the RFXCOM integration's `event_code`
-field — and additionally reassembles raw packets into a replayable command.
+On macOS, use the RFXCOM's `/dev/cu.usbserial-...` port from the port listing.
+`--save-log` creates a new file, refuses to overwrite an existing one and stores
+every packet, including rejected RAW captures. Capture is capped at 120 seconds
+and 2,000 packets. The tool restores and verifies the previous mode on exit;
+check that confirmation before reconnecting the receiver to HA.
 
-Install `pyRFXtrx` alongside it (`pip install pyRFXtrx`) and it also breaks each
-packet down field by field, as RFXmngr's log pane does. Without it you still get
-the packet type and the HA code.
+The tool prints packet details and transmit payloads but **does not transmit
+RF**. `--repeats` controls the printed transmit payloads (default 10); it does
+not change the HA learning UI. With pyRFXtrx installed it can also print fields
+for packets supported by that library. It reads `[RFXtrx] Recv:` debug lines
+from existing HA logs, but enabling debug alone does not enable RAW capture.
 
-That second part is the reason this project exists. RFXCOM's own workflow is to
-read the HA code out of RFXmngr and paste it into Home Assistant, which works
-well for a remote the firmware decodes. For one it does not, all you get is an
-`Undecoded` packet carrying a couple of bytes, and those bytes are not stable:
-one button pressed several times produced four different codes in testing,
-while a second button on the same remote produced one of the same ones. There
-is nothing there to build an entity on. The raw pulse train is the only thing
-that identifies the button.
+## Development and verification
+
+Use Python 3.14, matching the pinned Home Assistant test harness:
+
+```sh
+python3.14 -m venv .venv-ci
+.venv-ci/bin/python -m pip install -r requirements_test.txt
+.venv-ci/bin/python -m pytest
+.venv-ci/bin/python tools/rfx_capture.py --help
+```
+
+Tests run locally with simulated transports and recorded signals, not with a
+production HA or a live transmitter. CI runs tests, HACS validation and hassfest.
+Technical details are in [docs/PROTOCOL.md](docs/PROTOCOL.md); release notes are
+on [GitHub Releases](https://github.com/semichcsc-byte/rfxcom-commands/releases).
 
 ## Licence
 
-MIT
+MIT. See [LICENSE](LICENSE).

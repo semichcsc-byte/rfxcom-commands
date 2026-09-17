@@ -5,7 +5,7 @@
         "name": "Rolling code",
         "state": {
           "unknown_yet": "Press the button a few more times",
-          "no": "No, a code repeated",
+          "no": "A code repeated (not conclusive)",
           "maybe": "Looks like it"
         }
       }
@@ -14,7 +14,7 @@
   "services": {
     "watch": {
       "name": "Watch the airwaves",
-      "description": "Listens in raw mode and reports every command it hears, whether or not the RFXCOM can normally decode it. Each one also fires an rfxcom_commands_raw event as it arrives, so it can be watched live under Developer tools, Events. The RFXCOM decodes nothing else while this runs.",
+      "description": "Listens in RAW mode and reports accepted captures. Each accepted capture fires an rfxcom_commands_raw event. Incomplete or unsupported signals may be received without producing a code. Normal protocol decoding is interrupted during capture.",
       "fields": {
         "seconds": {
           "name": "Listen for",
@@ -27,7 +27,7 @@
     "kind": {
       "options": {
         "button": "Button - press it to send the command once",
-        "switch": "Switch - the remote's button toggles something on and off"
+        "switch": "Switch - one RF code toggles both on and off"
       }
     }
   },
@@ -47,7 +47,7 @@
     "step": {
       "init": {
         "title": "Watch the airwaves",
-        "description": "Listens to everything within range and shows each command it hears, whether or not the RFXCOM can normally decode it.\n\nUse it to find out if a remote is being heard at all, whether two buttons really send different codes, and whether something nearby is transmitting over you.\n\nThe RFXCOM decodes nothing else while this runs.",
+        "description": "Reports accepted RAW captures and packet counts during a bounded listening window. A received signal may still be rejected if its frames are incomplete, inconsistent or unsupported.\n\nNormal protocol decoding is interrupted while listening. Stop any other scanner or learning session first.",
         "data": {
           "seconds": "Listen for"
         }
@@ -82,7 +82,7 @@
         },
         "name": {
           "title": "Name the command",
-          "description": "Captured `{hex}`\n\n`{bits}`\n\n{quality}. Your remote sent it {frames} times over, all agreeing, and it will be replayed exactly that many times.\n\nThe entity will be created as `{entity_id}`.\n\nTick Test to transmit it and check it does the right thing. Nothing is saved until you leave that box unticked.",
+          "description": "Captured `{hex}`\n\n`{bits}`\n\n{quality}. Found {frames} agreeing frames. Replay uses that count, capped at ten; the captured burst may be shorter than the full physical press.\n\nThe entity will be created as `{entity_id}`.\n\nTick Test to transmit and observe the appliance. Nothing is saved while Test is checked.",
           "data": {
             "name": "Name",
             "kind": "Entity",
@@ -90,7 +90,7 @@
             "test": "Test before saving"
           },
           "data_description": {
-            "kind": "Pick Switch when the remote's button toggles something on and off. There is no feedback from the device, so the switch remembers what it last asked for."
+            "kind": "Use Switch only if the same RF code toggles both ways. Separate ON/OFF codes need two buttons. Switch state is assumed; repeated ON or OFF calls still transmit."
           }
         },
         "reconfigure": {

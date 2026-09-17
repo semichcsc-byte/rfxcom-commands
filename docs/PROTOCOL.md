@@ -1,8 +1,10 @@
 # The RFXCOM raw RF packet (type 0x7F)
 
-Notes from working out how to capture and replay a remote the RFXCOM cannot
-decode. Everything here was verified against an RFX-433EMC, hardware 4.1,
-firmware 1052, driving a ceiling fan light remote.
+Implementation notes and measured behavior from an RFX-433EMC, hardware 4.1.
+Tests include a ceiling-fan light and separate fan ON/OFF commands. Historical
+notes recorded firmware 1052; the later USB status reported firmware byte 0x34.
+Do not treat either value as a universal firmware requirement or assume that
+every receiver variant implements RAW mode identically.
 
 ## The problem
 
@@ -43,8 +45,9 @@ EC 7F 01 30 01 01 77 04 59 01 7F 04 72 ...
 ```
 
 One button press is a **burst**: the pulse train is split across up to four
-packets, because a packet holds at most 252 bytes. Reassemble in packet-index
-order and you have the complete waveform.
+packets, each carrying up to 124 pulse durations (253 bytes including the
+length byte). Reassemble in packet-index order to obtain the captured portion
+of the waveform; the receiver may reach capacity before the physical press ends.
 
 The fan capture in `tests/fan_remote_capture.txt` (17 September 2026) contains
 four groups of four full packets, all with flag zero. Index 3 therefore also
@@ -71,12 +74,21 @@ This is the part with no documentation. Raw reporting is off by default and
 there is no setting for it — not in the RFXCOM web interface, not in Home
 Assistant, not in pyRFXtrx.
 
-What switches it on is the **receive protocol list**. Enabling every protocol
-flips `msg3` of the status response from `0x00` to `0x80`, and the device starts
-emitting `0x7F` packets instead of `0x03` undecoded ones.
+The integration requests every protocol known to pyRFXtrx in the **receive
+protocol list**. Observed status bits vary with firmware: during the USB test,
+both `ffffff03` and `ffffffff` requests were reported back as `80400000`, yet
+RAW packets arrived. A status-mask mismatch alone does not prove failure;
+receiving `0x7F` packets is the evidence that RAW reception is active.
 
 Which individual bit is responsible was not narrowed down. Enabling everything
 works, and it is what this integration does during learning.
+
+The connection's original band, output power and protocol settings are preserved
+for restoration. Offline get-status reads must match command 0x02 and the
+requested sequence; set-mode also returns interface responses. The USB tool
+checks exact restoration at exit. The HA gateway uses the already-open
+connection and attempts restoration; it does not verify the returned mode mask.
+If the transport disappears, restoration can fail and is logged.
 
 Two consequences worth knowing:
 
@@ -139,10 +151,11 @@ Cut at the separators. A press repeats the same frame several times:
 burst of 360 pulses → 6 frames of 59 pulses
 ```
 
-**All the frames must decode identically.** This is the single most useful
-check in the whole process. A remote repeats itself; interference does not. If
-the frames disagree, another 433 MHz device transmitted during the capture and
-the result should be thrown away rather than saved.
+The decoder requires at least three usable frames. It selects the longest frame
+length appearing at least three times, then compares every normalized mark and
+space at that length. Those candidates must agree. Partial frames of other
+lengths do not vote. Disagreement can mean interference, reception errors or
+unsupported framing; it does not identify the cause by itself.
 
 ### 4. Read the bits
 
@@ -168,6 +181,11 @@ mis-measured pulse would otherwise be baked into every future transmission.
 
 Append the separator so the frame tiles cleanly when repeated. The result must
 have an even number of pulses.
+
+PWM payload bits are derived from mark lengths. Non-PWM signals instead use a
+signature of all normalized marks and spaces; this distinguishes patterns but
+is not a protocol decoder. The encoding label is heuristic. Protocols requiring
+other timings or framing can still be unsupported.
 
 ## Transmitting
 
@@ -216,29 +234,47 @@ received it.
 
 ## Things that cost time
 
-**Repeats matter more than they should.** At `repeats=5` this remote worked
-intermittently — the light would turn on and then refuse to turn off. At
-`repeats=10` it became reliable. The likely cause is frequency: a Broadlink
-measured this remote at **433.83 MHz** while the RFXtrx transmits on **433.92**,
-and 90 kHz is enough to sit at the edge of a cheap receiver's filter. The
-RFXtrx only offers 433.92, 433.42 and 434.50, so there is nothing to tune.
-
-If a command is unreliable at 10 repeats, the answer is antenna placement, not
-configuration.
+**Repeat behavior is appliance-specific.** Early light-toggle tests improved
+when moving from five to ten repeats. Later fan ON/OFF tests worked with eight.
+The integration now uses the number of agreeing captured frames, capped at ten.
+Increasing repeats is not a universal fix and can cause multiple actions.
+A Broadlink measured this remote near 433.83 MHz; the RFXtrx reports a 433.92 MHz
+band. Frequency offset is one possible explanation for marginal reception,
+not a confirmed diagnosis. RAW packets contain no carrier measurement.
 
 **The RFXtrx does not hear its own transmissions.** Convenient — no feedback
 loop to guard against — but it also means a transmission cannot be confirmed by
 watching for the event.
 
-**A toggle button gives the same code every time.** Worth stating because it is
-tempting to assume otherwise when a replay appears not to work. Captures of the
-"turn on" press and the "turn off" press of the same toggle were byte-identical.
-There is no alternating bit to reproduce; if a replay does nothing, the problem
-is the link, not the code.
+**One physical button does not imply one code.** The earlier light toggle sent
+the same code for both actions. The later fan button alternated separate ON and
+OFF commands, confirmed by physical replay. Do not infer toggle semantics from
+the button layout or classify changing codes as rolling codes without evidence.
 
 **Undecoded payloads cannot identify a button.** The 2-byte fragment was the
 same for two different buttons on the same remote, and varied between presses of
 one button. Raw mode is the only reliable way to tell buttons apart.
+
+## Concurrency and capture limits
+
+RAW reception uses a thread-safe queue of 64 packets on the reader thread.
+No per-packet callback is scheduled on Home Assistant's event loop. The consumer
+checks the queue asynchronously; overflow aborts capture with an explicit error
+and enters protocol restoration. A stale parser hook cannot enqueue after exit.
+
+Capture processing yields to the event loop each iteration, accepts at most
+2,000 packets and keeps at most four packets in a partial burst. Scanner duration
+is capped at 600 seconds; learning uses 20 seconds and watch at most 120 seconds.
+All capture entry points share an exclusive lock for the HA instance. Mode writes
+and learned transmissions share a send lock; complete multipart commands cannot
+interleave with other sends from this integration. External native service calls
+do not participate in that command-level lock.
+
+Cancellation waits for an in-flight write before restoring settings or releasing
+the lock, since cancelling an executor future cannot stop a physical serial
+write. A permanently stalled transport remains a recovery risk. These controls
+and regression tests address known defects; they do not establish the cause of
+all previously observed Core freezes.
 
 ## References
 

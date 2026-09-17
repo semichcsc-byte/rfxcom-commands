@@ -1,5 +1,8 @@
 name: Validate
 
+permissions:
+  contents: read
+
 on:
   push:
   pull_request:
@@ -13,14 +16,14 @@ jobs:
     name: Home Assistant manifest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: home-assistant/actions/hassfest@master
 
   hacs:
     name: HACS
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: hacs/action@main
         with:
           category: integration
@@ -29,8 +32,8 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           # Home Assistant 2026.9 requires 3.14, and so does the test harness
           # that pins to it.
