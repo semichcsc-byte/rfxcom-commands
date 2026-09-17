@@ -133,7 +133,7 @@ def is_raw_packet(packet: bytes) -> bool:
 
 def is_last_packet(packet: bytes) -> bool:
     """Whether this packet closes a burst."""
-    return bool(packet[4])
+    return bool(packet[4]) or packet[2] == MAX_PACKETS - 1
 
 
 def packet_pulses(packet: bytes) -> list[int]:
@@ -171,7 +171,18 @@ def _symbol_durations(pulses: list[int]) -> tuple[int, int, int]:
     provisional = [p for p in body if p < (low + high) / 2]
     if not provisional:
         raise RawRFError("Could not identify a short symbol")
-    guess_short = median(provisional)
+    short_center, long_center = provisional[0], provisional[-1]
+    for _iteration in range(16):
+        midpoint = (short_center + long_center) / 2
+        lower = [pulse for pulse in provisional if pulse <= midpoint]
+        upper = [pulse for pulse in provisional if pulse > midpoint]
+        if not lower or not upper:
+            raise RawRFError("Could not separate short and long pulses")
+        centers = (median(lower), median(upper))
+        if centers == (short_center, long_center):
+            break
+        short_center, long_center = centers
+    guess_short = short_center
 
     shorts = [p for p in body if p < guess_short * 2]
     longs = [p for p in body if guess_short * 2 <= p < guess_short * GAP_FACTOR * 2.5]
@@ -258,8 +269,10 @@ def decode(burst: list[bytes], *, min_frames: int = 3) -> Command:
     complete = [f for f in frames if len(f) > 4]
     if len(complete) < min_frames:
         raise RawRFError(
-            f"Only {len(complete)} usable frame(s) captured; the transmission "
-            "was cut short"
+            f"Only {len(complete)} usable frame(s) found in this burst; "
+            f"at least {min_frames} are required to validate a command. "
+            "This alone does not establish whether reception was incomplete "
+            "or the signal uses a different frame structure."
         )
 
     # The longest length that repeats enough, not the most common one. A lost

@@ -40,6 +40,11 @@ class TestCapture(unittest.TestCase):
         # reporting is off.
         self.assertFalse(is_raw_packet(bytes.fromhex("05030c2405f8")))
 
+    def test_fourth_packet_closes_a_capacity_limited_burst(self) -> None:
+        for index in range(4):
+            packet = _rx_packet([380, 1135] * 62, index, False)
+            self.assertEqual(is_last_packet(packet), index == 3)
+
     def test_pulses_are_pairs_of_bytes(self) -> None:
         self.assertEqual(len(packet_pulses(CAPTURE[0])), (len(CAPTURE[0]) - 5) // 2)
 
@@ -145,6 +150,19 @@ class TestDecode(unittest.TestCase):
         train = first + [8000] + second + [8000] + first + [8000]
         with self.assertRaisesRegex(RawRFError, "do not agree"):
             decode([_rx_packet(train, 0, True)])
+
+    def test_long_pulses_can_outnumber_short_pulses(self) -> None:
+        frame = [400, 1200] * 29 + [1200]
+        train = (frame + [6100]) * 8 + frame[:16]
+        packets = [
+            _rx_packet(train[index:index + 124], index // 124, False)
+            for index in range(0, len(train), 124)
+        ]
+        command = decode(packets)
+        self.assertEqual(command.short, 400)
+        self.assertEqual(command.long, 1200)
+        self.assertEqual(command.gap, 6100)
+        self.assertEqual(command.frames_seen, 8)
 
 
 def _rx_packet(pulses: list[int], index: int, last: bool) -> bytes:

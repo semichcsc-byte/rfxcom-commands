@@ -20,11 +20,14 @@ Two sources:
                       logs:
                         RFXtrx: debug
 
-  --port DEV    talk to the device directly, like RFXmngr. Needs the serial
-                port to itself, so stop Home Assistant first.
+    --port DEV    talk to the device directly, like RFXmngr. Needs exclusive
+                                access to that serial port. A receiver moved to another
+                                computer does not require stopping Home Assistant.
+
+    --save-log FILE  preserve every packet, including rejected raw captures.
 
     python3 rfx_capture.py --log home-assistant.log
-    python3 rfx_capture.py --port /dev/ttyUSB0 --seconds 30
+    python3 rfx_capture.py --port /dev/ttyUSB0 --seconds 30 --save-log capture.log
     python3 rfx_capture.py --log home-assistant.log --raw-only
 """
 
@@ -33,10 +36,13 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import time
+from contextlib import nullcontext
 from pathlib import Path
+from typing import TextIO
 
-sys.path.insert(
-    0, str(Path(__file__).resolve().parent.parent / "custom_components" / "rfxcom_commands")
+sys.path.append(
+    str(Path(__file__).resolve().parent.parent / "custom_components" / "rfxcom_commands")
 )
 
 from packets import ha_code, packet_name
@@ -70,39 +76,83 @@ def packets_from_log(path: Path) -> list[bytes]:
     return packets
 
 
-def packets_from_port(port: str, seconds: float, enable_raw: bool) -> list[bytes]:
+def read_packet(link, deadline: float) -> bytes | None:
+    head = link.read(1)
+    if not head:
+        return None
+    body = bytearray()
+    while len(body) < head[0]:
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Timed out reading a serial packet")
+        body.extend(link.read(head[0] - len(body)))
+    return head + body
+
+
+def receiver_mode(link) -> bytes:
+    link.write(b"\x0D\x00\x00\x01\x02" + bytes(9))
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        packet = read_packet(link, deadline)
+        if (
+            packet is not None and len(packet) >= 14
+            and packet[1] == 0x01 and packet[3:5] == b"\x01\x02"
+        ):
+            mode = bytearray(14)
+            mode[0] = 0x0D
+            mode[4] = 0x03
+            mode[5] = packet[5]
+            mode[6] = packet[13]
+            mode[7:11] = packet[7:11]
+            return bytes(mode)
+    raise RuntimeError("No receiver status; cannot safely preserve its mode")
+
+
+def packets_from_port(
+    port: str, seconds: float, enable_raw: bool, save_log: TextIO | None = None
+) -> list[bytes]:
     try:
         import serial  # noqa: PLC0415
     except ImportError:
         sys.exit("pyserial is needed for --port: pip install pyserial")
-    import time  # noqa: PLC0415
-
-    with serial.Serial(port, 38400, timeout=1) as link:
-        link.write(bytes([0x0D] + [0x00] * 13))  # reset
-        time.sleep(0.4)
-        link.reset_input_buffer()
-        if enable_raw:
-            link.write(SET_ALL_PROTOCOLS)
-            time.sleep(0.4)
-        link.write(b"\x0D\x00\x00\x03\x07" + bytes(9))  # start receiver
-        time.sleep(0.4)
-        link.reset_input_buffer()
-
-        print(f"Listening for {seconds:.0f}s. Press a button.", file=sys.stderr)
-        packets: list[bytes] = []
-        deadline = time.monotonic() + seconds
-        while time.monotonic() < deadline:
-            head = link.read(1)
-            if not head:
-                continue
-            length = head[0]
-            if length < 4:
-                continue
-            body = link.read(length)
-            if len(body) < length:
-                continue
-            packets.append(head + body)
-        return packets
+    with serial.Serial(port, 38400, timeout=0.2, write_timeout=2) as link:
+        previous = receiver_mode(link)
+        try:
+            if enable_raw:
+                raw_mode = bytearray(SET_ALL_PROTOCOLS)
+                raw_mode[5:7] = previous[5:7]
+                link.write(raw_mode)
+                reported = receiver_mode(link)
+                if reported[5] != previous[5]:
+                    raise RuntimeError("Receiver unexpectedly changed band")
+                print(
+                    f"Reported receive mode: {reported[7:11].hex()}; "
+                    "RAW reception is confirmed only by 0x7F packets.",
+                    file=sys.stderr,
+                )
+            link.write(b"\x0D\x00\x00\x03\x07" + bytes(9))
+            print(f"Listening for {seconds:.0f}s. Press a button.", file=sys.stderr)
+            packets: list[bytes] = []
+            deadline = time.monotonic() + seconds
+            while time.monotonic() < deadline:
+                packet = read_packet(link, deadline)
+                if packet is None or len(packet) < 5:
+                    continue
+                if save_log is not None:
+                    save_log.write("[RFXtrx] Recv: " + " ".join(
+                        f"0x{value:02x}" for value in packet
+                    ) + "\n")
+                    save_log.flush()
+                packets.append(packet)
+                if len(packets) >= 2000:
+                    print("Packet limit reached; stopping capture.", file=sys.stderr)
+                    break
+            return packets
+        finally:
+            if enable_raw:
+                link.write(previous)
+                if receiver_mode(link) != previous:
+                    raise RuntimeError("Receiver mode restoration was not confirmed")
+                print("Previous receiver mode restored and verified.", file=sys.stderr)
 
 
 def raw_bursts(packets: list[bytes]) -> list[list[bytes]]:
@@ -232,6 +282,7 @@ def main() -> int:
     parser.add_argument("--seconds", type=float, default=30, help="listen time for --port")
     parser.add_argument("--repeats", type=int, default=10, help="repeats in the transmit packet")
     parser.add_argument("--raw-only", action="store_true", help="skip the decoded packets")
+    parser.add_argument("--save-log", type=Path, help="save every serial packet to a new log file")
     parser.add_argument(
         "--no-raw-mode",
         action="store_true",
@@ -242,11 +293,19 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    packets = (
-        packets_from_log(args.log)
-        if args.log
-        else packets_from_port(args.port, args.seconds, not args.no_raw_mode)
-    )
+    if args.save_log and not args.port:
+        parser.error("--save-log requires --port")
+    if not 0 < args.seconds <= 120:
+        parser.error("--seconds must be between 0 and 120")
+    with (
+        args.save_log.open("x", encoding="ascii")
+        if args.save_log else nullcontext(None)
+    ) as output:
+        packets = (
+            packets_from_log(args.log)
+            if args.log
+            else packets_from_port(args.port, args.seconds, not args.no_raw_mode, output)
+        )
     if not packets:
         print("No packets found.", file=sys.stderr)
         return 1

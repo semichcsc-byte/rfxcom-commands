@@ -128,6 +128,12 @@ drifts out of step — someone used the physical remote, or a transmission was
 lost — press it again. It always transmits, even when the state already looks
 right, because that is the only way back.
 
+Some remotes alternate separate ON and OFF codes behind one physical button.
+The fan remote captured in `tests/fan_remote_capture.txt` does this: replay
+tests confirmed one code starts the fan and the other stops it. Learn these
+as two **buttons**, one for each action. The current single-code switch cannot
+represent a device that needs different ON and OFF commands.
+
 ## The scanner
 
 Turn on **Scanner** on the integration's device page and watch the sensors:

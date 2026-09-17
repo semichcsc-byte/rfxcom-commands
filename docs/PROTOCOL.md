@@ -46,6 +46,25 @@ One button press is a **burst**: the pulse train is split across up to four
 packets, because a packet holds at most 252 bytes. Reassemble in packet-index
 order and you have the complete waveform.
 
+The fan capture in `tests/fan_remote_capture.txt` (17 September 2026) contains
+four groups of four full packets, all with flag zero. Index 3 therefore also
+closes a capacity-limited capture; waiting only for a nonzero flag discards it.
+The final RF frame may be partial, so frame agreement is still required.
+
+All four presses contain eight agreeing 30-bit frames. Their codes alternate
+`000001001011011001001111010000` and `000001001011011001001100100011`.
+USB transmission tests on the same day, using eight repeats and confirmed by
+the user watching the fan, identified the first code as ON and the second as
+OFF: A left the already-running fan on, B stopped it, and A started it again.
+All three sends received transmit-OK acknowledgements, and the receiver mode
+was verified unchanged after each send. This confirms those observed actions,
+not long-term RF reliability. Save separate ON and OFF buttons rather than
+using a single-code toggle switch for this remote.
+The shorter-gap captures exposed a clustering bug: long pulses slightly
+outnumbered short pulses, making the overall median a long pulse. Cluster the
+two symbol lengths before selecting the short duration; otherwise the roughly
+6100 us separators are mistaken for long symbols and all frames merge into one.
+
 ### Enabling it
 
 This is the part with no documentation. Raw reporting is off by default and
