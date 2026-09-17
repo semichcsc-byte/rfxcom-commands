@@ -7,6 +7,17 @@ Learn and replay RF commands with an RFXCOM and create Home Assistant buttons
 or single-code toggle switches, including for remotes outside its built-in
 protocol decoders.
 
+## Why I built this
+
+I built RFXCOM Commands for my own Home Assistant setup. I wanted to control
+my fan with the RFXCOM I already had, even though its built-in decoders did not
+recognise the remote. Capturing and replaying the raw signal made that possible.
+
+It started as a solution for my home. I'm sharing it so others with compatible
+hardware can use it too, learn from it and help improve it. It brings command
+learning, buttons and scanner diagnostics into Home Assistant without needing
+to work out the remote's protocol by hand.
+
 ## Demo screenshots
 
 These screenshots show the real Home Assistant 2026.9 frontend with RFXCOM
@@ -19,24 +30,17 @@ is used to generate the images. Click an image to view it at full size.
 *Saved ON/OFF commands on the integration page. Each command can be edited
 independently; the Learn a command button starts a new learning flow.*
 
-## Current status
+## Before you start
 
-The v0.20.3 recognition fixes were verified against four real fan-remote
-captures. USB replay tests confirmed separate ON and OFF commands, and the
-owner reported successful operation after installing v0.20.3 in Home Assistant
-on 17 September 2026. The test suite covers those captures and the learning flow.
+This is an independent community project, developed around my own equipment,
+not an official [RFXCOM](https://www.rfxcom.com/) integration. Compatibility
+depends on your receiver, firmware and remote.
 
-Earlier releases experienced Core freezes, including an incident after the
-v0.20.1 scanner was enabled. Fixes cover cancellation, exclusive capture access,
-complete-command transmission, event-loop yielding and a bounded thread-safe
-receive buffer. **The original freezes have not been conclusively attributed
-to those defects; successful functional tests are not a long-term stability
-guarantee.**
-
-Keep a current Home Assistant backup. Raw capture temporarily interrupts normal
-RF protocol decoding. If Home Assistant becomes unresponsive, stop testing on
-that instance and use [offline capture](#offline-capture). It runs outside Core,
-but still changes the receiver mode temporarily.
+Keep a current Home Assistant backup. Learning and scanning temporarily
+interrupt normal RF protocol decoding; leave the scanner off when you are not
+using it. See the [technical notes](docs/PROTOCOL.md#concurrency-and-capture-limits)
+for known limitations and the history of stability issues, or use
+[offline capture](#offline-capture) to investigate signals outside Home Assistant.
 
 ## Requirements
 
