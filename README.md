@@ -20,10 +20,8 @@ to work out the remote's protocol by hand.
 
 ## Demo screenshots
 
-These screenshots show the real Home Assistant 2026.9 frontend with RFXCOM
-Commands v0.20.4 in an isolated local demo. Names are examples; signal values
-come from the recorded fan fixture. No production instance or live RF hardware
-is used to generate the images. Click an image to view it at full size.
+Home Assistant interface with example commands and recorded RF data.
+Click an image to view it at full size.
 
 [![RFXCOM Commands integration with separate Fan OFF and Fan ON commands](docs/images/commands.png)](docs/images/commands.png)
 
@@ -39,7 +37,7 @@ depends on your receiver, firmware and remote.
 Keep a current Home Assistant backup. Learning and scanning temporarily
 interrupt normal RF protocol decoding; leave the scanner off when you are not
 using it. See the [technical notes](docs/PROTOCOL.md#concurrency-and-capture-limits)
-for known limitations and the history of stability issues, or use
+for known limitations, or use
 [offline capture](#offline-capture) to investigate signals outside Home Assistant.
 
 ## Requirements
@@ -49,7 +47,7 @@ for known limitations and the history of stability issues, or use
 - The built-in **RFXCOM RFXtrx** integration configured and connected.
 - A receiver and firmware supporting RAW reception and transmission. Verified
   with an **RFX-433EMC, hardware 4.1**; other variants are not guaranteed.
-- A remote on a band supported by that receiver. These tests used 433 MHz RF.
+- A remote on a band supported by that receiver.
 
 This integration borrows the native integration's connection. It never opens a
 second serial reader. Raw mode reports pulse timings, not carrier frequency or
@@ -83,8 +81,7 @@ Confirm the installed version in HACS and check the integration's startup status
 An update does not automatically enable a disabled integration. To isolate a
 problem, disable **RFXCOM Commands** in Devices & services; this is separate from
 the native **RFXCOM RFXtrx** integration. Preserve logs before restarting an
-unresponsive instance. Reinstalling an earlier release through HACS also requires
-a restart and is not a guarantee that an older version is safer.
+unresponsive instance.
 
 ## Learning a command
 
@@ -105,9 +102,7 @@ attempts to restore the original receiver configuration.
 
 [![Learning form showing an accepted fan code, eight agreeing frames, a command name and Button or Switch selection](docs/images/learn-command.png)](docs/images/learn-command.png)
 
-*Demo: the recorded ON command has been accepted and named Fan ON. Test before
-saving is unchecked. The entity-ID placeholder is the actual pre-save preview;
-it is not recomputed while typing the name.*
+*An accepted command, ready to name and save. Test before saving is unchecked.*
 
 ## Buttons and switches
 
@@ -119,20 +114,11 @@ restored after a restart; it is not feedback from the appliance. Repeated ON or
 OFF calls still transmit, even when the displayed state already matches. Such a
 switch is not suitable for automations that require idempotent ON/OFF actions.
 
-### Fan with separate ON and OFF codes
+### Separate ON and OFF commands
 
-One physical button can alternate two commands. The captured fan remote does
-this, and USB tests confirmed their effects:
-
-| Action | Captured code | Agreeing frames |
-|---|---|---|
-| ON | `000001001011011001001111010000` | 8 |
-| OFF | `000001001011011001001100100011` | 8 |
-
-Learn these as **two buttons**, one per action. The current single-code switch
-does not combine separate ON and OFF codes. These codes belong to the tested
-remote, not a universal fan command. Capture data and observations are in
-[the protocol notes](docs/PROTOCOL.md).
+One physical button can alternate different ON and OFF codes, as my fan remote
+does. Learn these as **two buttons**, one per action. The current single-code
+switch does not combine separate ON and OFF codes.
 
 ## Scanner and watch
 
@@ -182,16 +168,14 @@ resuming normal use. Receiver-band metadata is not a measurement of the remote.
 
 [![Device page showing Fan OFF and Fan ON controls, a stopped scanner and recorded RF diagnostic readings](docs/images/scanner.png)](docs/images/scanner.png)
 
-*Demo after processing two recorded presses: two codes, eight RAW packets and
-eight agreeing frames in the last capture. The scanner is stopped; the band is
-simulated receiver metadata, not a measured carrier frequency.*
+*Recorded signal readings on the device page, with the scanner stopped.*
 
 ## Transmission and repeats
 
 Learned commands use the number of agreeing captured frames, capped at ten.
 Capacity-limited reception can omit part of a physical press, so this count is
 not necessarily the remote's full burst length. The learning UI has no repeat
-setting. The fan ON/OFF tests succeeded with eight repeats.
+setting.
 
 More repeats are not necessarily better: some appliances may treat them as
 multiple presses. Concurrent sends from this integration are serialized as
@@ -212,7 +196,7 @@ reverse replaces the entity; update dashboards and automations that reference it
 |---|---|
 | No packets | Receiver connection, remote battery, distance and supported RF band |
 | Packets but no RAW | Firmware RAW support and mode selection |
-| Only one usable frame | Use v0.20.3 or newer; if it persists, preserve a raw capture. It may be incomplete reception or unsupported framing |
+| Only one usable frame | Update to the latest release and preserve a raw capture if it persists; reception may be incomplete or the framing unsupported |
 | Frames disagree | Interference, reception errors or unsupported structure; do not bypass validation |
 | Buffer overflow | Capture stops and attempts restoration. Investigate with short offline captures |
 | Command acknowledged but no effect | Separate ON/OFF semantics, range, antenna, band compatibility and captured waveform |
@@ -254,7 +238,7 @@ not change the HA learning UI. With pyRFXtrx installed it can also print fields
 for packets supported by that library. It reads `[RFXtrx] Recv:` debug lines
 from existing HA logs, but enabling debug alone does not enable RAW capture.
 
-## Development and verification
+## Development
 
 Use Python 3.14, matching the pinned Home Assistant test harness:
 
@@ -265,28 +249,16 @@ python3.14 -m venv .venv-ci
 .venv-ci/bin/python tools/rfx_capture.py --help
 ```
 
-Tests run locally with simulated transports and recorded signals, not with a
-production HA or a live transmitter. CI runs tests, HACS validation and hassfest.
+Tests use simulated transports and recorded signals. CI runs tests, HACS
+validation and hassfest.
 Technical details are in [docs/PROTOCOL.md](docs/PROTOCOL.md); release notes are
 on [GitHub Releases](https://github.com/semichcsc-byte/rfxcom-commands/releases).
 
 ### Regenerating screenshots
 
-The optional [screenshot generator](tools/make_screenshots.py) uses the real
-frontend, the existing test fixtures and an ephemeral local HTTP server. Run it
-in a separate development environment, not on your production HA installation:
-
-```sh
-python3.14 -m venv .venv-dev
-.venv-dev/bin/python -m pip install -r requirements_test.txt home-assistant-frontend==20260826.4 playwright==1.55.0
-.venv-dev/bin/python -m playwright install chromium
-.venv-dev/bin/python -m pytest tools/make_screenshots.py
-```
-
-Images are written to `docs/images/`. Browser requests are restricted to the
-local demo server, and no serial transport is opened. The generator learns an
-example from recorded packets without pressing any transmit controls. It is
-not part of the normal test run and requires no credentials from a real HA.
+The optional [screenshot generator](tools/make_screenshots.py) includes its setup
+instructions. It runs a local demo with recorded signals and writes images to
+`docs/images/`, without connecting to production HA or opening a serial port.
 
 ## Licence
 

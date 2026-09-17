@@ -1,10 +1,7 @@
 # The RFXCOM raw RF packet (type 0x7F)
 
-Implementation notes and measured behavior from an RFX-433EMC, hardware 4.1.
-Tests include a ceiling-fan light and separate fan ON/OFF commands. Historical
-notes recorded firmware 1052; the later USB status reported firmware byte 0x34.
-Do not treat either value as a universal firmware requirement or assume that
-every receiver variant implements RAW mode identically.
+Packet format and implementation details for RAW capture and replay, based on
+an RFX-433EMC, hardware 4.1. Behavior can vary with receiver and firmware.
 
 ## The problem
 
@@ -28,8 +25,6 @@ single-bit reception errors in a value too short to have any redundancy.
 It is enough to notice that *a* button was pressed. It is not enough to tell
 which button, and nowhere near enough to reproduce the signal.
 
-A dead end for control, and the reason to look for something else.
-
 ## Raw mode
 
 RFXtrx firmware can report the pulse train itself, as packet type `0x7F`:
@@ -49,30 +44,12 @@ packets, each carrying up to 124 pulse durations (253 bytes including the
 length byte). Reassemble in packet-index order to obtain the captured portion
 of the waveform; the receiver may reach capacity before the physical press ends.
 
-The fan capture in `tests/fan_remote_capture.txt` (17 September 2026) contains
-four groups of four full packets, all with flag zero. Index 3 therefore also
-closes a capacity-limited capture; waiting only for a nonzero flag discards it.
-The final RF frame may be partial, so frame agreement is still required.
-
-All four presses contain eight agreeing 30-bit frames. Their codes alternate
-`000001001011011001001111010000` and `000001001011011001001100100011`.
-USB transmission tests on the same day, using eight repeats and confirmed by
-the user watching the fan, identified the first code as ON and the second as
-OFF: A left the already-running fan on, B stopped it, and A started it again.
-All three sends received transmit-OK acknowledgements, and the receiver mode
-was verified unchanged after each send. This confirms those observed actions,
-not long-term RF reliability. Save separate ON and OFF buttons rather than
-using a single-code toggle switch for this remote.
-The shorter-gap captures exposed a clustering bug: long pulses slightly
-outnumbered short pulses, making the overall median a long pulse. Cluster the
-two symbol lengths before selecting the short duration; otherwise the roughly
-6100 us separators are mistaken for long symbols and all frames merge into one.
+Index 3 also closes a capacity-limited capture when its flag is zero. The
+final RF frame may be partial, so frame agreement is still required. The
+[fan fixture](../tests/fan_remote_capture.txt) exercises this case with four
+groups of four full packets and eight agreeing frames per group.
 
 ### Enabling it
-
-This is the part with no documentation. Raw reporting is off by default and
-there is no setting for it — not in the RFXCOM web interface, not in Home
-Assistant, not in pyRFXtrx.
 
 The integration requests every protocol known to pyRFXtrx in the **receive
 protocol list**. Observed status bits vary with firmware: during the USB test,
@@ -80,8 +57,7 @@ both `ffffff03` and `ffffffff` requests were reported back as `80400000`, yet
 RAW packets arrived. A status-mask mismatch alone does not prove failure;
 receiving `0x7F` packets is the evidence that RAW reception is active.
 
-Which individual bit is responsible was not narrowed down. Enabling everything
-works, and it is what this integration does during learning.
+The minimum protocol-bit combination required for RAW has not been established.
 
 The connection's original band, output power and protocol settings are preserved
 for restoration. Offline get-status reads must match command 0x02 and the
@@ -131,7 +107,7 @@ order. This one gives 360 values.
 
 ### 2. Find the symbol lengths
 
-The durations cluster hard:
+Example pulse durations:
 
 ```
 ~378 µs   short symbol
@@ -142,6 +118,10 @@ The durations cluster hard:
 
 On/off keying with roughly a 1:3 ratio. Anything above about three times the
 long symbol is a separator rather than data.
+
+Cluster short and long symbol durations separately. The overall median can
+fall in the long-pulse group when long pulses outnumber short ones, causing
+separators to be misclassified and multiple frames to merge into one.
 
 ### 3. Split into frames and check they agree
 
@@ -232,28 +212,17 @@ A successful transmission is acknowledged:
 The ACK confirms the RFXtrx transmitted. It says nothing about whether anything
 received it.
 
-## Things that cost time
+## Replay limitations
 
-**Repeat behavior is appliance-specific.** Early light-toggle tests improved
-when moving from five to ten repeats. Later fan ON/OFF tests worked with eight.
-The integration now uses the number of agreeing captured frames, capped at ten.
-Increasing repeats is not a universal fix and can cause multiple actions.
-A Broadlink measured this remote near 433.83 MHz; the RFXtrx reports a 433.92 MHz
-band. Frequency offset is one possible explanation for marginal reception,
-not a confirmed diagnosis. RAW packets contain no carrier measurement.
-
-**The RFXtrx does not hear its own transmissions.** Convenient — no feedback
-loop to guard against — but it also means a transmission cannot be confirmed by
-watching for the event.
-
-**One physical button does not imply one code.** The earlier light toggle sent
-the same code for both actions. The later fan button alternated separate ON and
-OFF commands, confirmed by physical replay. Do not infer toggle semantics from
-the button layout or classify changing codes as rolling codes without evidence.
-
-**Undecoded payloads cannot identify a button.** The 2-byte fragment was the
-same for two different buttons on the same remote, and varied between presses of
-one button. Raw mode is the only reliable way to tell buttons apart.
+- Repeat behavior is appliance-specific. Replay uses the agreeing frame count,
+  capped at ten; increasing it can cause multiple actions.
+- RAW packets contain no carrier-frequency measurement. Check hardware band
+  compatibility rather than inferring it from pulse timing.
+- The receiver does not report its own transmission as a received remote event.
+- One physical button may send separate ON and OFF codes. Do not infer toggle
+  semantics or rolling-code behavior from the button layout alone.
+- Short Undecoded payloads can vary for one button or coincide across buttons;
+  they are not reliable identifiers for the captured remote.
 
 ## Concurrency and capture limits
 
@@ -272,33 +241,29 @@ do not participate in that command-level lock.
 
 Cancellation waits for an in-flight write before restoring settings or releasing
 the lock, since cancelling an executor future cannot stop a physical serial
-write. A permanently stalled transport remains a recovery risk. These controls
-and regression tests address known defects; they do not establish the cause of
-all previously observed Core freezes.
+write. A permanently stalled transport remains a recovery risk. Earlier Core
+freezes have not been conclusively explained; these safeguards are not a
+guarantee against every transport or runtime failure.
 
 ## Demo screenshots
 
-The following captures use the real HA 2026.9 frontend and an isolated test
-instance, not a production installation. The learning flow receives the first
-ON burst from [the recorded fixture](../tests/fan_remote_capture.txt). Its eight
-agreeing frames yield code `0x012D93D0`:
+Local demonstration with recorded RF data. The learning form shows eight
+agreeing frames for the example ON code `0x012D93D0`:
 
 [![Real learning form displaying the recorded ON command and eight agreeing frames](images/learn-command.png)](images/learn-command.png)
 
-The scanner example consumes the recorded ON and OFF bursts. It shows eight
-RAW packets in total, two signatures and eight agreeing frames for the final
-OFF code `0x012D9323`. The scanner has stopped. Receiver band is simulated status
-metadata; none of these screenshots demonstrate live radio performance.
+The stopped scanner shows the recorded ON and OFF signatures. The example OFF
+code is `0x012D9323`; receiver band is simulated status metadata.
 
 [![Stopped scanner with recorded fan RF diagnostics and separate ON and OFF buttons](images/scanner.png)](images/scanner.png)
 
 See [the user manual](../README.md#regenerating-screenshots) for reproducible
 generation commands, and [the integration-page screenshot](images/commands.png)
-for the resulting saved commands. No production credentials or devices are used.
+for the resulting saved commands.
 
 ## References
 
-- [RFXCOM SDK](http://www.rfxcom.com/) — official packet documentation
+- [RFXCOM](https://www.rfxcom.com/) — manufacturer and official documentation
 - [node-rfxcom](https://github.com/rfxcom/node-rfxcom) — `lib/rawtx.js` documents
   the transmit constraints; the rest of `lib/` is the clearest reference for the
   decoded packet types
