@@ -336,3 +336,51 @@ async def test_cancelling_start_stops_the_pending_listener(
         await start
     assert cancelled.is_set()
     assert not scanner.running
+
+
+async def test_stopping_returns_even_when_cleanup_will_not(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """Unloading the config entry waits on this, so it cannot wait forever."""
+    monkeypatch.setattr(scanner_module, "STOP_TIMEOUT", 0.1)
+    stuck = asyncio.Event()
+
+    class StuckListener(FakeListener):
+        async def __aexit__(self, *_exc: object) -> None:
+            await stuck.wait()
+
+    monkeypatch.setattr(scanner_module, "RawListener", StuckListener)
+    scanner = scanner_module.Scanner(hass)
+    await scanner.async_start()
+
+    await asyncio.wait_for(scanner.async_stop(), 1)
+
+    stuck.set()
+    await hass.async_block_till_done()
+
+
+async def test_reports_are_coalesced(hass: HomeAssistant, monkeypatch) -> None:
+    """A noisy band rejects bursts far faster than ten entities can be redrawn."""
+    monkeypatch.setattr(scanner_module, "NOTIFY_INTERVAL", 0.05)
+    scanner = scanner_module.Scanner(hass)
+    redraws = 0
+
+    def subscriber() -> None:
+        nonlocal redraws
+        redraws += 1
+
+    scanner.async_subscribe(subscriber)
+
+    for _ in range(2000):
+        scanner._notify_soon()
+
+    # The first one is immediate, so the dashboard still reacts at once.
+    assert redraws == 1
+
+    await asyncio.sleep(0.1)
+    assert redraws == 2
+
+    # And it settles rather than ticking on forever.
+    await asyncio.sleep(0.15)
+    assert redraws == 2
+    scanner._cancel_notify()

@@ -10,12 +10,19 @@ class method and lets us see every packet before pyRFXtrx discards it.
 Raw reporting also has to be switched on, and the only switch is the receive
 protocol list. Which protocol bit unlocks it is undocumented and differs between
 firmware versions, so learning enables the lot and puts the previous selection
-back afterwards.
+back afterwards. For the length of the capture the hook then passes nothing but
+raw packets through: with every protocol enabled, anything else is a
+transmission the configured list deliberately excludes.
 
 The mode change is written straight to the open connection rather than by
 rewriting the RFXtrx config entry. Reloading the entry would close and reopen
 the serial port twice per capture, and closing it while the reader thread sits
 in a blocking read hangs the reload.
+
+Every operation on the port is bounded. The library writes to pyserial without
+a write timeout and, from 0.33, waits seconds for an acknowledgement under its
+own lock, so an unbounded wait here would be inherited by whatever asked for it
+-- an entity, a config flow, or Home Assistant shutting down.
 """
 
 from __future__ import annotations
@@ -37,6 +44,21 @@ _LOGGER = logging.getLogger(__name__)
 # Long enough for the firmware to apply a mode change and answer with a status.
 MODE_SETTLE = 1.0
 
+# Nothing is allowed to wait on the serial port forever. pyserial is opened
+# without a write timeout, so a port that stops draining blocks its thread
+# indefinitely, and newer pyRFXtrx waits seconds for an acknowledgement under
+# its own lock. Waiting that out unbounded would hold the port, block the
+# config entry from unloading and stop Home Assistant from shutting down.
+WRITE_TIMEOUT = 10.0
+
+# A command can be up to four packets, each a separate write, so it gets a
+# larger budget than a single mode change.
+SEND_TIMEOUT = 20.0
+
+# Cleanup restores the protocol list, which is one write plus the settle, and
+# may first have to wait for a command that is still on the wire.
+CLOSE_TIMEOUT = WRITE_TIMEOUT * 2 + MODE_SETTLE
+
 # Bound the buffer on the reader thread, before any event-loop work is queued.
 # Overflow aborts capture rather than assembling a signal from missing packets.
 QUEUE_SIZE = 64
@@ -52,24 +74,83 @@ def _lock(hass: HomeAssistant, name: str) -> asyncio.Lock:
     return locks.setdefault(name, asyncio.Lock())
 
 
-async def _async_finish(task: asyncio.Future[Any]) -> Any:
+async def _async_finish(task: asyncio.Future[Any], timeout: float) -> Any:
     """Finish an in-flight operation before propagating cancellation.
 
     Cancelling an executor future does not stop its serial write. Cleanup and
-    the next command must wait until that write has actually finished.
+    the next command must wait until that write has actually finished --
+    but not indefinitely. A write that is never going to return would
+    otherwise make the caller uncancellable, which takes the config entry and
+    Home Assistant's own shutdown down with it.
     """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
     cancelled = False
     while not task.done():
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            break
         try:
-            await asyncio.shield(task)
+            await asyncio.wait_for(asyncio.shield(task), remaining)
+        except TimeoutError:
+            break
         except asyncio.CancelledError:
             cancelled = True
+
+    if not task.done():
+        # Abandoned, not stopped: it still owns the port, so whoever holds the
+        # lock on its behalf keeps holding it until it really finishes.
+        _LOGGER.warning(
+            "The RFXCOM did not finish an operation within %.0f seconds; "
+            "giving up on waiting for it",
+            timeout,
+        )
+        if cancelled:
+            raise asyncio.CancelledError
+        raise GatewayError(
+            f"The RFXCOM did not respond within {timeout:.0f} seconds. Its "
+            "connection may need to be reloaded."
+        )
+
     if cancelled:
         try:
             task.result()
         finally:
             raise asyncio.CancelledError
     return task.result()
+
+
+async def _async_exclusive(
+    hass: HomeAssistant,
+    start: Callable[[], asyncio.Future[Any]],
+    timeout: float,
+) -> Any:
+    """Drive the port from one place at a time, within a deadline.
+
+    The lock is released when the operation genuinely finishes rather than
+    when this returns, so abandoning a stuck write cannot let the next one
+    interleave with it half-written on the wire.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    lock = _lock(hass, "send")
+    try:
+        async with asyncio.timeout_at(deadline):
+            await lock.acquire()
+    except TimeoutError:
+        raise GatewayError(
+            "The RFXCOM is still busy with an earlier command that has not "
+            "come back. Its connection may need to be reloaded."
+        ) from None
+
+    try:
+        task = start()
+    except BaseException:
+        lock.release()
+        raise
+    task.add_done_callback(lambda _: lock.release())
+
+    return await _async_finish(task, deadline - loop.time())
 
 
 def find_entry(hass: HomeAssistant) -> ConfigEntry:
@@ -211,8 +292,9 @@ async def async_send(hass: HomeAssistant, events: list[str]) -> None:
                 RFXTRX_DOMAIN, RFXTRX_SERVICE_SEND, {"event": event}, blocking=True
             )
 
-    async with _lock(hass, "send"):
-        await _async_finish(hass.async_create_task(send_command()))
+    await _async_exclusive(
+        hass, lambda: hass.async_create_task(send_command()), SEND_TIMEOUT
+    )
 
 
 class RawListener:
@@ -266,7 +348,9 @@ class RawListener:
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
-        await _async_finish(self._hass.async_create_task(self._async_close()))
+        await _async_finish(
+            self._hass.async_create_task(self._async_close()), CLOSE_TIMEOUT
+        )
 
     async def _async_close(self) -> None:
         try:
@@ -293,10 +377,13 @@ class RawListener:
             packet.hex(),
         )
         try:
-            async with _lock(self._hass, "send"):
-                await _async_finish(
-                    self._hass.async_add_executor_job(transport.send, packet)
-                )
+            await _async_exclusive(
+                self._hass,
+                lambda: self._hass.async_add_executor_job(transport.send, packet),
+                WRITE_TIMEOUT,
+            )
+        except GatewayError:
+            raise
         except Exception as err:  # noqa: BLE001 - surfaced to the user
             raise GatewayError(f"Could not change the RFXCOM mode: {err}") from err
         await asyncio.sleep(MODE_SETTLE)
@@ -309,10 +396,12 @@ class RawListener:
         self._accepting = True
 
         def _parse(data: Any) -> Any:
+            raw = False
             try:
                 packet = bytes(data)
                 self.packets_seen += 1
-                if len(packet) >= 6 and packet[1] == 0x7F:
+                raw = len(packet) >= 6 and packet[1] == 0x7F
+                if raw:
                     self.raw_seen += 1
                     with self._buffer_lock:
                         if self._accepting:
@@ -322,7 +411,19 @@ class RawListener:
                                 self._queue.put_nowait(packet)
             except Exception:  # noqa: BLE001 - a bad capture must not kill the reader
                 _LOGGER.debug("Ignoring malformed packet", exc_info=True)
-            return original(data)
+                return original(data)
+
+            if raw:
+                # pyRFXtrx has no class for 0x7F and would discard it anyway.
+                return original(data)
+
+            # Everything else is dropped for the length of the capture. The
+            # protocol list is wide open here, so these are transmissions the
+            # configured list excludes: passing them on would have the core
+            # integration decode the whole neighbourhood, add devices nobody
+            # asked for, and do it on the event loop at the speed of the
+            # serial port. The receiver is deaf during a capture either way.
+            return None
 
         transport.parse = _parse
         self._transport = transport

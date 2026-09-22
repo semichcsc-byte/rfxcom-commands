@@ -22,6 +22,7 @@ from custom_components.rfxcom_commands.config_flow import CommandSubentryFlowHan
 from custom_components.rfxcom_commands.gateway import (
     GatewayError,
     RawListener,
+    _lock,
     current_protocols,
     find_entry,
 )
@@ -154,13 +155,23 @@ async def test_hook_is_installed_and_removed(hass: HomeAssistant, rfxtrx) -> Non
     assert transport.parse.__func__ is original
 
 
-async def test_hook_still_passes_packets_to_the_library(
+async def test_hook_withholds_everything_but_raw(
     hass: HomeAssistant, rfxtrx
 ) -> None:
+    """A capture opens the protocol list up; the extra traffic stays here.
+
+    Passing it on would have the core integration decode every transmission in
+    earshot, including the protocols the configured list leaves out.
+    """
     transport = rfxtrx.transport
     async with RawListener(hass):
-        transport.parse(UNDECODED_PACKET)
-    assert transport.parsed == [UNDECODED_PACKET]
+        assert transport.parse(UNDECODED_PACKET) is None
+        transport.parse(RAW_PACKET)
+    assert transport.parsed == [RAW_PACKET]
+
+    # Outside a capture the library sees everything again.
+    transport.parse(UNDECODED_PACKET)
+    assert transport.parsed == [RAW_PACKET, UNDECODED_PACKET]
 
 
 async def test_only_raw_packets_are_queued(hass: HomeAssistant, rfxtrx) -> None:
@@ -473,3 +484,96 @@ async def test_scanner_excludes_learning_and_watch(
         await scanner.async_stop()
     assert len(rfxtrx.transport.sent) == 2
     assert "parse" not in vars(rfxtrx.transport)
+
+
+async def test_a_write_that_never_returns_is_given_up_on(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    """A serial write can block forever. Waiting for one must not.
+
+    pyserial is opened without a write timeout, so a port that stops draining
+    blocks its thread for good. Inheriting that wait would make the caller --
+    an entity, a config flow, or a config entry unload -- uncancellable too.
+    """
+    monkeypatch.setattr(gateway, "WRITE_TIMEOUT", 0.1)
+    stuck = asyncio.Event()
+    original_executor = hass.async_add_executor_job
+    monkeypatch.setattr(
+        hass, "async_add_executor_job",
+        lambda function, *args: (
+            asyncio.create_task(stuck.wait())
+            if function == rfxtrx.transport.send
+            else original_executor(function, *args)
+        ),
+    )
+
+    with pytest.raises(GatewayError, match="did not respond"):
+        async with RawListener(hass):
+            pass
+
+    # Given up on, not forgotten: the write still owns the port, so the next
+    # attempt is told the device is busy rather than writing over it.
+    with pytest.raises(GatewayError, match="busy"):
+        async with RawListener(hass):
+            pass
+
+    assert "parse" not in vars(rfxtrx.transport)
+
+    stuck.set()
+    await asyncio.sleep(0)
+
+
+async def test_a_command_that_never_completes_is_reported(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """Pressing a button reports a dead connection instead of hanging on it."""
+    monkeypatch.setattr(gateway, "SEND_TIMEOUT", 0.1)
+    stuck = asyncio.Event()
+
+    async def service(call):
+        await stuck.wait()
+
+    hass.services.async_register("rfxtrx", "send", service)
+
+    with pytest.raises(GatewayError, match="did not respond"):
+        await gateway.async_send(hass, ["A0"])
+
+    stuck.set()
+    await hass.async_block_till_done()
+
+
+async def test_cleanup_finishes_when_the_port_stops_answering(
+    hass: HomeAssistant, rfxtrx, monkeypatch
+) -> None:
+    """Restoring the protocol list is bounded, so leaving a capture always ends.
+
+    The capture lock has to come back either way: without it the scanner could
+    never be started again.
+    """
+    monkeypatch.setattr(gateway, "WRITE_TIMEOUT", 0.1)
+    monkeypatch.setattr(gateway, "CLOSE_TIMEOUT", 1.0)
+    stuck = asyncio.Event()
+    original_executor = hass.async_add_executor_job
+
+    async def stall(function, *args):
+        if len(rfxtrx.transport.sent) == 1:  # the restore, not the opening
+            await stuck.wait()
+        function(*args)
+
+    monkeypatch.setattr(
+        hass, "async_add_executor_job",
+        lambda function, *args: (
+            asyncio.create_task(stall(function, *args))
+            if function == rfxtrx.transport.send
+            else original_executor(function, *args)
+        ),
+    )
+
+    async with RawListener(hass):
+        pass
+
+    assert "parse" not in vars(rfxtrx.transport)
+    assert not _lock(hass, "capture").locked()
+
+    stuck.set()
+    await hass.async_block_till_done()

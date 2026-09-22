@@ -153,7 +153,14 @@ Stop the current session before starting another. The scanner stops after at
 most 10 minutes, or sooner after 2,000 packets, overflow, cancellation or error.
 Its `error` attribute retains startup or runtime failures. Normal protocol
 decoding is interrupted during RAW capture, even though the serial connection
-stays open.
+stays open: a capture enables every receive protocol, so anything that is not a
+RAW packet is withheld rather than handed to the native integration, which would
+otherwise decode transmissions your configured protocol list excludes and add
+devices for them. Diagnostic readings are published at most twice a second.
+
+Every exchange with the receiver is bounded. A write that does not come back is
+reported as a failure instead of being waited on, because an unbounded wait
+would also block reloading or shutting down Home Assistant.
 
 **Configure** offers a bounded watch window and a written report. The
 `rfxcom_commands.watch` action returns structured data and also emits events.

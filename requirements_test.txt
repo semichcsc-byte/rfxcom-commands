@@ -5,4 +5,11 @@ pytest-homeassistant-custom-component==0.13.363
 # The gateway imports this directly. In a running Home Assistant the core
 # RFXCOM integration has already installed it, which is why the manifest does
 # not declare it, but the tests get no such favour.
-pyRFXtrx
+#
+# Pinned to whatever that integration's manifest requires, because the library
+# is not interchangeable across releases: from 0.33 `PySerialTransport.send`
+# waits seconds for an acknowledgement under its own lock and closes the serial
+# port when one does not arrive. Testing against a different release tests
+# something nobody runs. Check
+# homeassistant/components/rfxtrx/manifest.json when bumping Home Assistant.
+pyRFXtrx==0.31.1

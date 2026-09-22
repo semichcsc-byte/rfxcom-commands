@@ -20,9 +20,19 @@ from homeassistant.core import HomeAssistant, callback
 
 from .capture import Capture
 from .const import EVENT_RAW_COMMAND, MAX_SCAN_SECONDS, RECENT_CODES, ROLLING_CODES_HINT
-from .gateway import GatewayError, RawListener
+from .gateway import CLOSE_TIMEOUT, GatewayError, RawListener
 
 _LOGGER = logging.getLogger(__name__)
+
+# A noisy band rejects bursts faster than anything can usefully be redrawn, and
+# every redraw is ten entities, each with a recorder row and a push to every
+# open dashboard. Report at this rate instead of per packet.
+NOTIFY_INTERVAL = 0.5
+
+# Stopping restores the protocol list, so it takes as long as cleanup is
+# allowed to take. Past that the task is abandoned rather than waited on: a
+# config entry unload runs through here and must not be able to wedge.
+STOP_TIMEOUT = CLOSE_TIMEOUT + 5.0
 
 
 class Scanner:
@@ -33,6 +43,8 @@ class Scanner:
         self._task: asyncio.Task[None] | None = None
         self._ready: asyncio.Event | None = None
         self._listeners: list[Callable[[], None]] = []
+        self._notify_timer: asyncio.TimerHandle | None = None
+        self._notify_pending = False
         self.last: dict[str, Any] | None = None
         self.recent: list[dict[str, Any]] = []
         self.address = ""
@@ -63,6 +75,36 @@ class Scanner:
         for update in list(self._listeners):
             update()
 
+    @callback
+    def _notify_soon(self) -> None:
+        """Redraw now, then at most once per interval while packets keep coming.
+
+        Used for everything the capture loop reports, which is as fast as the
+        receiver hands packets over. Milestones the user is waiting on --
+        starting, stopping, failing -- still redraw immediately.
+        """
+        if self._notify_timer is not None:
+            self._notify_pending = True
+            return
+        self._notify()
+        self._notify_timer = self._hass.loop.call_later(
+            NOTIFY_INTERVAL, self._notify_interval_over
+        )
+
+    @callback
+    def _notify_interval_over(self) -> None:
+        self._notify_timer = None
+        if self._notify_pending:
+            self._notify_pending = False
+            self._notify_soon()
+
+    @callback
+    def _cancel_notify(self) -> None:
+        if self._notify_timer is not None:
+            self._notify_timer.cancel()
+            self._notify_timer = None
+        self._notify_pending = False
+
     async def async_start(self) -> None:
         if not self.running:
             self.error = None
@@ -80,10 +122,16 @@ class Scanner:
         task = self._task
         if task is not None and not task.done():
             task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+            # Bounded on purpose: unloading the config entry waits here, and
+            # cleanup can only be as slow as the port allows it to be.
+            done, _ = await asyncio.wait({task}, timeout=STOP_TIMEOUT)
+            if not done:
+                _LOGGER.warning(
+                    "The scanner did not stop within %.0f seconds; leaving it to "
+                    "finish on its own",
+                    STOP_TIMEOUT,
+                )
+        self._cancel_notify()
         self._notify()
 
     async def _run(self) -> None:
@@ -100,7 +148,7 @@ class Scanner:
                     self.packets = listener.packets_seen
                     self.raw_packets = listener.raw_seen
                     self.bursts_dropped = capture.bursts_dropped
-                    self._notify()
+                    self._notify_soon()
 
                 async for command in capture.commands(
                     MAX_SCAN_SECONDS, on_reject=_rejected
@@ -134,7 +182,7 @@ class Scanner:
                     self.packets = listener.packets_seen
                     self.raw_packets = listener.raw_seen
                     self.bursts_dropped = capture.bursts_dropped
-                    self._notify()
+                    self._notify_soon()
                 self.packets = listener.packets_seen
                 self.raw_packets = listener.raw_seen
                 self.bursts_dropped = capture.bursts_dropped
@@ -150,6 +198,7 @@ class Scanner:
                 self._task = None
             if ready is not None:
                 ready.set()
+            self._cancel_notify()
             self._notify()
 
     @property

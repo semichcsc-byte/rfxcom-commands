@@ -74,6 +74,14 @@ Two consequences worth knowing:
   is captured, you can restore your normal protocol list and still transmit raw
   packets. This is what lets the integration leave your configuration alone.
 
+Because the requested list is every protocol rather than the configured one, the
+parser hook withholds everything except `0x7F` for the length of the capture.
+The alternative is having the native integration decode every transmission in
+range — including the protocols the configured list deliberately excludes — on
+the event loop, at the rate the serial port delivers them, adding a device for
+each if automatic addition is on. Reception returns to normal when the protocol
+list is restored.
+
 ### Why Home Assistant never sees these packets
 
 `RFXtrxTransport.parse()` in pyRFXtrx calls `lowlevel.parse(data)`, which
@@ -230,14 +238,30 @@ RAW reception uses a thread-safe queue of 64 packets on the reader thread.
 No per-packet callback is scheduled on Home Assistant's event loop. The consumer
 checks the queue asynchronously; overflow aborts capture with an explicit error
 and enters protocol restoration. A stale parser hook cannot enqueue after exit.
+Non-RAW packets are dropped by the hook while a capture is active, so the
+widened protocol list cannot reach the event loop at all.
 
 Capture processing yields to the event loop each iteration, accepts at most
 2,000 packets and keeps at most four packets in a partial burst. Scanner duration
 is capped at 600 seconds; learning uses 20 seconds and watch at most 120 seconds.
+Scanner diagnostics are coalesced to one update per 500 ms, because a rejected
+burst arrives faster than ten entities can usefully be redrawn.
+
 All capture entry points share an exclusive lock for the HA instance. Mode writes
 and learned transmissions share a send lock; complete multipart commands cannot
 interleave with other sends from this integration. External native service calls
 do not participate in that command-level lock.
+
+Every wait on the port has a deadline: 10 seconds for a mode write, 20 for a
+complete command, and cleanup is bounded in turn. Cancellation is still deferred
+until an in-flight write finishes, but only within those deadlines. Past one, the
+write is abandoned and reported; it keeps the send lock until it really returns,
+so a later command cannot interleave with a write still half on the wire. This
+matters because pyserial is opened without a write timeout, and because from
+pyRFXtrx 0.33 `PySerialTransport.send` waits `_ACK_TIMEOUT_SECONDS` for an
+acknowledgement under its own lock and closes the serial port if none arrives.
+Home Assistant currently requires 0.31.1; the test suite pins the same release,
+since the two behave differently on exactly this path.
 
 Cancellation waits for an in-flight write before restoring settings or releasing
 the lock, since cancelling an executor future cannot stop a physical serial
