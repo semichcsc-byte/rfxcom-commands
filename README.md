@@ -53,9 +53,21 @@ This integration borrows the native integration's connection. It never opens a
 second serial reader. Raw mode reports pulse timings, not carrier frequency or
 signal strength. Supported hardware bands cannot be expanded by software.
 
+<!-- ha-marketplace:exclude-start -->
 ## Installation
 
-### HACS
+### Home Assistant Marketplace (2026.11 or newer)
+
+[![Open RFXCOM Commands in the Home Assistant Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=semichcsc-byte&repository=rfxcom-commands&category=integration)
+
+Open the repository with the button above. If prompted, add it as a custom
+repository of type **Integration**, then install and restart Home Assistant.
+Existing HACS installations migrate automatically to the Marketplace; do not
+install a second copy.
+
+### HACS (Home Assistant 2026.9 and 2026.10)
+
+[Open this repository in HACS](https://my.home-assistant.io/redirect/hacs_repository/?owner=semichcsc-byte&repository=rfxcom-commands&category=integration).
 
 1. Open HACS and its **Custom repositories** menu.
 2. Add `https://github.com/semichcsc-byte/rfxcom-commands` as **Integration**.
@@ -72,11 +84,22 @@ Place the repository's `custom_components/rfxcom_commands` directory under the
 Home Assistant configuration directory, then restart Home Assistant. The final
 path must be `config/custom_components/rfxcom_commands/manifest.json`.
 
+<!-- ha-marketplace:exclude-end -->
+
+## Set up
+
+After installation and a restart, go to **Settings > Devices & services >
+Add integration** and add **RFXCOM Commands**. The native **RFXCOM RFXtrx**
+integration must already be working. Adding this integration does not start
+a scan or transmit a command.
+
 ### Updating and recovery
 
-Download the new version through HACS and restart Home Assistant. Reloading an
+Install the new version through the Marketplace (or HACS on older Home Assistant
+versions) and restart Home Assistant. Reloading an
 integration does not guarantee that imported Python modules have been replaced.
-Confirm the installed version in HACS and check the integration's startup status.
+Confirm the installed version in the Marketplace or HACS and check the
+integration's startup status.
 
 An update does not automatically enable a disabled integration. To isolate a
 problem, disable **RFXCOM Commands** in Devices & services; this is separate from
